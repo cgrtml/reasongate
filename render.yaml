@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: llmshield-demo
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements-deploy.txt
+    startCommand: python run_web.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: VOYAGE_API_KEY
+        sync: false      # Render panelinden gizli olarak gir
+      - key: ANTHROPIC_API_KEY
+        sync: false      # Render panelinden gizli olarak gir

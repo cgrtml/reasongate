@@ -32,9 +32,15 @@ class ClassifierDetector(Detector):
         if self._model is not None:
             return
         import joblib
-        path = os.path.join(self.dir, "soft_tree.joblib")
-        if not os.path.exists(path):
-            raise RuntimeError("Model yok. Once: python eval/train_save.py")
+        # once genel 'model.joblib' (deploy/LogReg), yoksa 'soft_tree.joblib' (yerel)
+        path = None
+        for name in ("model.joblib", "soft_tree.joblib"):
+            p = os.path.join(self.dir, name)
+            if os.path.exists(p):
+                path = p
+                break
+        if path is None:
+            raise RuntimeError("Model yok. Once: python eval/make_deploy_model.py")
         self._model = joblib.load(path)
         meta = json.load(open(os.path.join(self.dir, "meta.json")))
         self._th = float(meta.get("threshold", 0.5))

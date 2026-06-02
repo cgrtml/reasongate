@@ -31,10 +31,13 @@ BOT_SYSTEM = (
 )
 
 
+_MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model")
+
+
 def get_shield():
     global _shield
     if _shield is None:
-        _shield = Shield(input_detectors=[ClassifierDetector()],
+        _shield = Shield(input_detectors=[ClassifierDetector(models_dir=_MODEL_DIR)],
                          output_detectors=[LeakageDetector()])
     return _shield
 
