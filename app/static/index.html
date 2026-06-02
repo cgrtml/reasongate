@@ -73,7 +73,10 @@ async function send(){
   go.disabled=true;
   const wait=bubble('bot','<span class="spinner"></span> kalkan kontrol ediyor...');
   try{
-    const r=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt})});
+    const KEY = new URLSearchParams(location.search).get('key') || '';
+    const r=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json','X-Demo-Key':KEY},body:JSON.stringify({prompt})});
+    if(!r.ok){ const e=await r.json().catch(()=>({})); wait.remove();
+      bubble('blocked','<div class="who">⛔ Erişim</div>'+(e.detail || ('Hata '+r.status))); go.disabled=false; return; }
     const d=await r.json();
     wait.remove();
     if(d.action==='block'){

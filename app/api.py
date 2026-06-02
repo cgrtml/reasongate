@@ -9,7 +9,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import FastAPI
+from datetime import datetime, timezone
+
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -46,6 +48,23 @@ class Q(BaseModel):
     prompt: str
 
 
+# --- Erisim kontrolu + maliyet tavani ---
+# DEMO_KEY tanimliysa istek 'X-Demo-Key' (ya da ?key=) ile eslesmeli -> herkese acik degil.
+# DAILY_LIMIT: gunluk maks istek (maliyet tavani). Sayac bellekte (restart'ta sifirlanir).
+_DEMO_KEY = os.environ.get("DEMO_KEY")
+_DAILY_LIMIT = int(os.environ.get("DAILY_LIMIT", "150"))
+_counts = {}
+
+
+def _gate(x_demo_key):
+    if _DEMO_KEY and x_demo_key != _DEMO_KEY:
+        raise HTTPException(status_code=403, detail="Gecersiz veya eksik erisim kodu.")
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    _counts[day] = _counts.get(day, 0) + 1
+    if _counts[day] > _DAILY_LIMIT:
+        raise HTTPException(status_code=429, detail="Gunluk demo limiti doldu. Yarin tekrar deneyin.")
+
+
 @app.get("/")
 def index():
     return FileResponse(os.path.join(_STATIC, "index.html"))
@@ -67,13 +86,15 @@ def _input_info(res):
 
 
 @app.post("/scan")
-def scan(q: Q):
+def scan(q: Q, x_demo_key: str = Header(None)):
+    _gate(x_demo_key)
     return _input_info(get_shield().scan_input(q.prompt))
 
 
 @app.post("/chat")
-def chat(q: Q):
+def chat(q: Q, x_demo_key: str = Header(None)):
     """Korumali sohbet: guvenliyse gercek Claude'a gonder, cevabi don; degilse blokla."""
+    _gate(x_demo_key)
     shield = get_shield()
     res = shield.scan_input(q.prompt)
     info = _input_info(res)
