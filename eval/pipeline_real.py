@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 from eval import metrics
-from llmshield import embeddings as emb
+from reasongate import embeddings as emb
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 POOL = os.path.join(HERE, "data", "pool.json")

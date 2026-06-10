@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 from eval import metrics
-from llmshield import embeddings as emb
+from reasongate import embeddings as emb
 
 DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "real.json")
 TARGET_RECALL = 0.95

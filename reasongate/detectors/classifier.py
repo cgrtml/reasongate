@@ -10,9 +10,9 @@ import os
 
 import numpy as np
 
-from llmshield.detectors.base import Detector
-from llmshield.types import Detection
-from llmshield import embeddings
+from reasongate.detectors.base import Detector
+from reasongate.types import Detection
+from reasongate import embeddings
 
 _MODELS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models")
 
@@ -21,8 +21,15 @@ class ClassifierDetector(Detector):
     name = "ml_classifier"
     stage = "input"
 
-    def __init__(self, models_dir: str = _MODELS):
+    def __init__(self, models_dir: str = _MODELS, preset: str = None,
+                 threshold: float = None):
+        """preset: 'recall_first' | 'balanced' | 'precision_first' (meta.json'dan).
+        threshold: ham esik override (preset'i ezer). Ikisi de None ise meta'daki
+        varsayilan (balanced) kullanilir. Tunable guardrail: over-defense'i dayatmaz,
+        kontrolu kullaniciya verir."""
         self.dir = models_dir
+        self.preset = preset
+        self._override_th = threshold
         self._model = None
         self._th = 0.5
         self._bank_emb = None
@@ -43,7 +50,13 @@ class ClassifierDetector(Detector):
             raise RuntimeError("Model yok. Once: python eval/make_deploy_model.py")
         self._model = joblib.load(path)
         meta = json.load(open(os.path.join(self.dir, "meta.json")))
-        self._th = float(meta.get("threshold", 0.5))
+        # esik onceligi: ham override > preset > meta varsayilani
+        if self._override_th is not None:
+            self._th = float(self._override_th)
+        elif self.preset and self.preset in meta.get("presets", {}):
+            self._th = float(meta["presets"][self.preset]["threshold"])
+        else:
+            self._th = float(meta.get("threshold", 0.5))
         bank = np.load(os.path.join(self.dir, "attack_bank.npz"), allow_pickle=True)
         be = np.asarray(bank["emb"], dtype=float)
         self._bank_emb = be / (np.linalg.norm(be, axis=1, keepdims=True) + 1e-9)

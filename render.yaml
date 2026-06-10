@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: llmshield-demo
+    name: reasongate-demo
     runtime: python
     plan: free
     buildCommand: pip install -r requirements-deploy.txt

@@ -2,7 +2,7 @@
 
 3 gercek seti birlestirir (deepset+jackhhao + xTRam1 ~5900), train/val/test,
 embedding cache, SoftDecisionTree + LogReg egitir, held-out raporlar, ve EN IYI
-modeli web icin kaydeder (llmshield/models/, esik VAL'de recall>=%95).
+modeli web icin kaydeder (reasongate/models/, esik VAL'de recall>=%95).
 
 Not: bu model artik xTRam1'i de gordu -> 0.882 OOD sayisi ESKI model icindi;
 yeni modelin gercek OOD'si icin 4. bir taze set gerekir (sonraki adim).
@@ -18,14 +18,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 from eval import metrics
-from llmshield import embeddings as emb
+from reasongate import embeddings as emb
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 POOL = os.path.join(HERE, "data", "pool.json")
 OOD = os.path.join(HERE, "data", "ood.json")
 CACHE = os.path.join(HERE, "data", "best_emb_cache.npz")
-MODELS = os.path.join(ROOT, "llmshield", "models")
+MODELS = os.path.join(ROOT, "reasongate", "models")
 TARGET_RECALL = 0.95
 
 

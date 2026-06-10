@@ -8,3 +8,6 @@ data/
 
 models/
 _notes/
+_archive/
+dist/
+build/

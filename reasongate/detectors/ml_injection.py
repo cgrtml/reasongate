@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from llmshield.detectors.base import Detector
-from llmshield.types import Detection
-from llmshield import embeddings
+from reasongate.detectors.base import Detector
+from reasongate.types import Detection
+from reasongate import embeddings
 
 # Bilinen saldiri bankasi — eval/dataset.ATTACKS'tan FARKLI ifadeler.
 REFERENCE_ATTACKS: List[str] = [

@@ -1,4 +1,4 @@
-"""llmshield web API:  python run_web.py
+"""reasongate web API:  python run_web.py
 
   GET  /        -> arayuz
   GET  /health
@@ -15,11 +15,11 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from llmshield import Shield
-from llmshield.detectors.classifier import ClassifierDetector
-from llmshield.detectors.leakage import LeakageDetector
+from reasongate import Shield
+from reasongate.detectors.classifier import ClassifierDetector
+from reasongate.detectors.leakage import LeakageDetector
 
-app = FastAPI(title="llmshield")
+app = FastAPI(title="reasongate")
 _STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 _shield = None
 
@@ -103,7 +103,7 @@ def chat(q: Q, x_demo_key: str = Header(None)):
         info["answer"] = None
         return info
     # guvenli -> sirket botu (gercek Claude, destek-asistani kisiligi)
-    from llmshield.adapters.anthropic_llm import claude_llm
+    from reasongate.adapters.anthropic_llm import claude_llm
     answer = claude_llm(q.prompt, system=BOT_SYSTEM)
     out = shield.scan_output(answer)         # cikti da taranir
     if out.action == "block":

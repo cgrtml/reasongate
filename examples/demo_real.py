@@ -9,9 +9,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from llmshield import Shield
-from llmshield.detectors.classifier import ClassifierDetector
-from llmshield.detectors.leakage import LeakageDetector
+from reasongate import Shield
+from reasongate.detectors.classifier import ClassifierDetector
+from reasongate.detectors.leakage import LeakageDetector
 
 
 def dummy_llm(prompt: str) -> str:

@@ -2,7 +2,7 @@
 
 - Gercek havuzu train/val'e boler, SoftDecisionTree'yi embedding uzerinde egitir.
 - Esik VAL'de recall>=%95 hedefiyle secilir (guvenlik-oncelikli).
-- Kayit: llmshield/models/  (model + esik + aciklama icin saldiri ornekleri)
+- Kayit: reasongate/models/  (model + esik + aciklama icin saldiri ornekleri)
 """
 import hashlib
 import json
@@ -15,13 +15,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 import joblib
-from llmshield import embeddings as emb
+from reasongate import embeddings as emb
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 POOL = os.path.join(HERE, "data", "pool.json")
 CACHE = os.path.join(HERE, "data", "emb_cache.npz")
-MODELS = os.path.join(ROOT, "llmshield", "models")
+MODELS = os.path.join(ROOT, "reasongate", "models")
 TARGET_RECALL = 0.95
 
 

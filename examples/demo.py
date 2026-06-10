@@ -8,7 +8,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from llmshield import Shield
+from reasongate import Shield
 
 
 def dummy_llm(prompt: str) -> str:

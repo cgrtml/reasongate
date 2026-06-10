@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import os
 
-from llmshield import embeddings  # noqa: F401  (.env yuklenmesini tetikler)
+from reasongate import embeddings  # noqa: F401  (.env yuklenmesini tetikler)
 
 _client = None
 

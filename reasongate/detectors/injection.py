@@ -9,8 +9,8 @@ from __future__ import annotations
 import re
 from typing import List, Tuple
 
-from llmshield.detectors.base import Detector
-from llmshield.types import Detection
+from reasongate.detectors.base import Detector
+from reasongate.types import Detection
 
 # (regex, insan-okunur etiket, agirlik)
 _PATTERNS: List[Tuple[str, str, float]] = [

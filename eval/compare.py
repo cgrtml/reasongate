@@ -10,8 +10,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from llmshield.detectors.injection import InjectionDetector
-from llmshield.detectors.ml_injection import MLInjectionDetector
+from reasongate.detectors.injection import InjectionDetector
+from reasongate.detectors.ml_injection import MLInjectionDetector
 from eval import dataset, metrics, stats
 
 
@@ -28,8 +28,8 @@ def main():
     # --- ML benzerlik skorlari (TOPLU embed, vektorel) ---
     print(f"Embedding hesaplaniyor ({len(prompts)} prompt + banka, toplu)...")
     import numpy as np
-    from llmshield import embeddings as emb
-    from llmshield.detectors.ml_injection import REFERENCE_ATTACKS
+    from reasongate import embeddings as emb
+    from reasongate.detectors.ml_injection import REFERENCE_ATTACKS
 
     def _norm(M):
         M = np.asarray(M, dtype=float)

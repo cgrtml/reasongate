@@ -24,7 +24,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 POOL = os.path.join(HERE, "data", "pool.json")
 CACHE = os.path.join(HERE, "data", "emb_cache.npz")
-MODELS = os.path.join(ROOT, "llmshield", "models")
+MODELS = os.path.join(ROOT, "reasongate", "models")
 
 
 def main():

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from llmshield.types import Detection
+from reasongate.types import Detection
 
 
 class Detector(ABC):

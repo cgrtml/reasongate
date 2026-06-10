@@ -16,9 +16,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 
 from eval import dataset, metrics
-from llmshield import embeddings as emb
-from llmshield.features import build_features, FEATURE_NAMES
-from llmshield.detectors.ml_injection import REFERENCE_ATTACKS
+from reasongate import embeddings as emb
+from reasongate.features import build_features, FEATURE_NAMES
+from reasongate.detectors.ml_injection import REFERENCE_ATTACKS
 
 
 def _ml_scores(prompts):

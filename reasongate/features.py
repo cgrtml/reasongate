@@ -9,7 +9,7 @@ from typing import List
 
 import numpy as np
 
-from llmshield.detectors.injection import InjectionDetector
+from reasongate.detectors.injection import InjectionDetector
 
 FEATURE_NAMES: List[str] = [
     "kural_skoru",      # kural-tabanli injection skoru (0..1)

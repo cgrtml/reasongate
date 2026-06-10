@@ -1,0 +1,36 @@
+{
+  "threshold": 0.9973,
+  "target_recall": 0.95,
+  "n_train": 3342,
+  "datasets": "deepset+jackhhao+xTRam1",
+  "default_preset": "balanced",
+  "presets": {
+    "recall_first": {
+      "threshold": 0.968,
+      "target_fpr": 0.15,
+      "fpr_test_mean": 16.9,
+      "fpr_test_std": 3.7,
+      "recall_gandalf": 86.9,
+      "recall_jailbreak": 95.6
+    },
+    "balanced": {
+      "threshold": 0.9973,
+      "target_fpr": 0.08,
+      "fpr_test_mean": 8.8,
+      "fpr_test_std": 3.5,
+      "recall_gandalf": 75.0,
+      "recall_jailbreak": 91.8
+    },
+    "precision_first": {
+      "threshold": 0.9998,
+      "target_fpr": 0.03,
+      "fpr_test_mean": 4.3,
+      "fpr_test_std": 3.2,
+      "recall_gandalf": 55.4,
+      "recall_jailbreak": 83.4
+    }
+  },
+  "calibration": "threshold = median over seeds 0..19 of smallest tau with FPR<=target on a random 50% NotInject calibration split; reported fpr/recall on complementary held-out halves. NotInject is NOT in training.",
+  "threshold_prev_recall_first_shipped": 0.8395000100135803,
+  "production_note": "Soft-tree scores saturate (bimodal near 0 and 1); all preset thresholds lie in a ~0.03-wide band near 1.0, where ~18% of benign (NotInject) also score >=0.96. Presets are calibrated operating points, NOT fixed guarantees: monitor the production score histogram for drift, since a small distribution shift can move FPR disproportionately (cf. reported FPR sd of ~3.5pts). precision_first (tau~1.0) is the edge of the slice, not a true high-precision mode. Mitigation: score calibration (isotonic/Platt) to spread scores before thresholding."
+}

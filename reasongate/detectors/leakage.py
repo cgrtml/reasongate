@@ -6,8 +6,8 @@ from __future__ import annotations
 import re
 from typing import List, Tuple
 
-from llmshield.detectors.base import Detector
-from llmshield.types import Detection
+from reasongate.detectors.base import Detector
+from reasongate.types import Detection
 
 _PATTERNS: List[Tuple[str, str, float]] = [
     (r"sk-[A-Za-z0-9]{16,}", "OpenAI tarzi API anahtari", 0.95),
