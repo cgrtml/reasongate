@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "reasongate"
-version = "0.0.1"
+version = "0.1.0"
 description = "Explainable, model-agnostic LLM security gate: every block carries a reason."
 readme = "README.md"
 requires-python = ">=3.9"
