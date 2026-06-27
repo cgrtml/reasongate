@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Callable, List, Optional
 
 from reasongate import policy
+from reasongate.audit import AuditHook, safe_emit
 from reasongate.detectors.base import Detector
 from reasongate.detectors import (InjectionDetector, LeakageDetector,
                                  NormalizationDetector)
@@ -27,7 +28,8 @@ class Shield:
                  context_detectors: Optional[List[Detector]] = None,
                  block_threshold: float = 0.8,
                  flag_threshold: float = 0.5,
-                 provenance_cap: float = 0.5):
+                 provenance_cap: float = 0.5,
+                 audit_hook: Optional[AuditHook] = None):
         # Varsayilan: injection + obfuscation (gizleme) kalkani birlikte.
         # NormalizationDetector regex'i atlatmak icin gizlenmis saldirilari
         # (zero-width, homoglyph, leetspeak, aralikli harf) yakalar.
@@ -43,13 +45,25 @@ class Shield:
         # Plain str/list[str] -> provenance KAPALI -> eski davranis birebir.
         # CAP karar-seviyesi karma-guven FPR'den kalibre edilecek (su an parametre).
         self._provenance = ProvenanceDetector(cap=provenance_cap)
+        # Denetim kancasi: her karar burdan yayinlanir (varsayilan: yok).
+        # Bkz. reasongate.audit (log_sink / file_sink) — kurumsal SIEM
+        # sink'leri bu kanca uzerine private katmanda kurulur.
+        self.audit_hook = audit_hook
 
-    def scan_input(self, prompt: str) -> ShieldResult:
+    def _emit(self, result: ShieldResult) -> ShieldResult:
+        """Kararı denetim kancasina yollar (ayarliysa) ve aynen geri doner.
+        Denetim yayini guvenlik kararini ASLA bozmaz (bkz. audit.safe_emit)."""
+        if self.audit_hook is not None:
+            safe_emit(self.audit_hook, result)
+        return result
+
+    def scan_input(self, prompt: str, *, _emit: bool = True) -> ShieldResult:
         dets = [d.scan(prompt) for d in self.input_detectors]
         action, _ = policy.decide(dets, self.block_threshold, self.flag_threshold)
-        return ShieldResult(action=action, stage="input", detections=dets)
+        res = ShieldResult(action=action, stage="input", detections=dets)
+        return self._emit(res) if _emit else res
 
-    def scan_context(self, segments) -> ShieldResult:
+    def scan_context(self, segments, *, _emit: bool = True) -> ShieldResult:
         """Retrieve edilen icerigi (RAG dokumani, tool ciktisi, web sayfasi)
         dolayli-enjeksiyona karsi tarar.
 
@@ -76,14 +90,17 @@ class Shield:
                     pdet.reason = f"[parca {i}] " + pdet.reason
                     dets.append(pdet)
         if not dets:
-            return ShieldResult(action="allow", stage="context", detections=[])
+            res = ShieldResult(action="allow", stage="context", detections=[])
+            return self._emit(res) if _emit else res
         action, _ = policy.decide(dets, self.block_threshold, self.flag_threshold)
-        return ShieldResult(action=action, stage="context", detections=dets)
+        res = ShieldResult(action=action, stage="context", detections=dets)
+        return self._emit(res) if _emit else res
 
-    def scan_output(self, text: str) -> ShieldResult:
+    def scan_output(self, text: str, *, _emit: bool = True) -> ShieldResult:
         dets = [d.scan(text) for d in self.output_detectors]
         action, _ = policy.decide(dets, self.block_threshold, self.flag_threshold)
-        return ShieldResult(action=action, stage="output", detections=dets, output=text)
+        res = ShieldResult(action=action, stage="output", detections=dets, output=text)
+        return self._emit(res) if _emit else res
 
     def protect(self, prompt: str, llm_fn: Callable[[str], str],
                 context=None) -> ShieldResult:
@@ -92,23 +109,25 @@ class Shield:
         context verildiyse (RAG/tool icerigi), LLM cagrilmadan once dolayli
         enjeksiyona karsi taranir; bloklanirsa LLM HIC cagrilmaz.
         """
-        inp = self.scan_input(prompt)
+        # Ic taramalar tek tek YAYINLANMAZ (_emit=False); protect TEK bir
+        # nihai karar yayinlar, boylece bir istek = bir denetim kaydi.
+        inp = self.scan_input(prompt, _emit=False)
         if inp.action == "block":
-            return inp  # LLM hic cagrilmadi
+            return self._emit(inp)  # LLM hic cagrilmadi
 
-        ctx = self.scan_context(context) if context is not None else None
+        ctx = self.scan_context(context, _emit=False) if context is not None else None
         if ctx is not None and ctx.action == "block":
-            return ctx  # zehirli context -> LLM hic cagrilmadi
+            return self._emit(ctx)  # zehirli context -> LLM hic cagrilmadi
 
         raw = llm_fn(prompt)
-        out = self.scan_output(raw)
+        out = self.scan_output(raw, _emit=False)
         # girdi/context 'flag' ise ve cikti temizse, flag bilgisini koru
         upstream = [r for r in (inp, ctx) if r is not None and r.action == "flag"]
         if upstream and out.action == "allow":
             out.action = "flag"
             for r in upstream:
                 out.detections = r.detections + out.detections
-        return out
+        return self._emit(out)
 
     def guard(self, llm_fn: Callable[[str], str]) -> Callable[[str], ShieldResult]:
         """Herhangi bir LLM fonksiyonunu korumali bir surumune cevirir."""

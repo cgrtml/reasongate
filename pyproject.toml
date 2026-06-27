@@ -37,3 +37,7 @@ Issues = "https://github.com/cgrtml/reasongate/issues"
 [tool.setuptools.packages.find]
 include = ["reasongate*"]
 exclude = ["eval*", "app*", "examples*", "tests*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

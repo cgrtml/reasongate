@@ -16,8 +16,11 @@ from reasongate.types import Detection
 _PATTERNS: List[Tuple[str, str, float]] = [
     (r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions", "onceki talimatlari yoksay", 0.9),
     (r"disregard\s+(the\s+)?(above|previous|system)", "yukaridakini gozardi et", 0.8),
-    (r"onceki\s+(tum\s+)?(talimatlar[ıi]|komutlar[ıi])\s+(yoksay|gozardi|unut)", "onceki talimatlari yoksay (TR)", 0.9),
+    # TR kaliplari diyakritik-toleransli: hem "onceki tum" hem "önceki tüm" eslesir.
+    (r"[öo]nceki\s+(t[üu]m\s+)?(talimatlar[ıi]|komutlar[ıi])\s+(yoksay|g[öo]zard[ıi]|unut)", "onceki talimatlari yoksay (TR)", 0.9),
     (r"(reveal|show|print|repeat)\s+(your\s+)?(system\s+)?(prompt|instructions)", "sistem promptunu sizdir", 0.9),
+    # TR "sistem promptunu göster/ifşa et/sızdır/yazdır" — guclu sizdirma niyeti.
+    (r"sistem\s+prompt\w*.{0,20}(g[öo]ster|if[şs]a|s[ıi]zd[ıi]r|yazd[ıi]r|payla[şs])", "sistem promptunu sizdir (TR)", 0.9),
     (r"sistem\s+prompt", "sistem promptuna atif", 0.6),
     (r"\bDAN\b|do\s+anything\s+now", "DAN jailbreak", 0.85),
     (r"developer\s+mode", "developer mode jailbreak", 0.8),
