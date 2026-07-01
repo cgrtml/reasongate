@@ -18,7 +18,7 @@ from reasongate.detectors import (InjectionDetector, LeakageDetector,
                                  NormalizationDetector)
 from reasongate.detectors.indirect import IndirectInjectionDetector
 from reasongate.detectors.provenance import ProvenanceDetector
-from reasongate.types import Segment, ShieldResult
+from reasongate.types import Detection, Segment, ShieldResult
 
 
 class Shield:
@@ -29,7 +29,8 @@ class Shield:
                  block_threshold: float = 0.8,
                  flag_threshold: float = 0.5,
                  provenance_cap: float = 0.5,
-                 audit_hook: Optional[AuditHook] = None):
+                 audit_hook: Optional[AuditHook] = None,
+                 max_input_chars: int = 50_000):
         # Varsayilan: injection + obfuscation (gizleme) kalkani birlikte.
         # NormalizationDetector regex'i atlatmak icin gizlenmis saldirilari
         # (zero-width, homoglyph, leetspeak, aralikli harf) yakalar.
@@ -49,6 +50,21 @@ class Shield:
         # Bkz. reasongate.audit (log_sink / file_sink) — kurumsal SIEM
         # sink'leri bu kanca uzerine private katmanda kurulur.
         self.audit_hook = audit_hook
+        # Girdi siniri: bir guvenlik araci, devasa/patolojik girdiyle kendini
+        # DoS ettirmemeli (regex catastrophic-backtracking ve bellek/CPU tuketimi).
+        # Girdi bu limitin ustundeyse taramadan ONCE kirpilir ve denetime islenir.
+        self.max_input_chars = int(max_input_chars)
+
+    def _bound(self, text: Optional[str]):
+        """Girdiyi max_input_chars'a kirpar. Donus: (kirpilmis_metin, kirpildi_mi)."""
+        if text is not None and len(text) > self.max_input_chars:
+            return text[:self.max_input_chars], True
+        return text, False
+
+    @staticmethod
+    def _limit_detection(limit: int) -> Detection:
+        return Detection("input_limit", False, 0.0,
+                         f"Girdi {limit} karaktere kirpildi (asiri-kaynak/DoS korumasi).", [])
 
     def _emit(self, result: ShieldResult) -> ShieldResult:
         """Kararı denetim kancasina yollar (ayarliysa) ve aynen geri doner.
@@ -58,7 +74,10 @@ class Shield:
         return result
 
     def scan_input(self, prompt: str, *, _emit: bool = True) -> ShieldResult:
+        prompt, truncated = self._bound(prompt)
         dets = [d.scan(prompt) for d in self.input_detectors]
+        if truncated:
+            dets.append(self._limit_detection(self.max_input_chars))
         action, _ = policy.decide(dets, self.block_threshold, self.flag_threshold)
         res = ShieldResult(action=action, stage="input", detections=dets)
         return self._emit(res) if _emit else res
@@ -97,7 +116,10 @@ class Shield:
         return self._emit(res) if _emit else res
 
     def scan_output(self, text: str, *, _emit: bool = True) -> ShieldResult:
+        text, truncated = self._bound(text)
         dets = [d.scan(text) for d in self.output_detectors]
+        if truncated:
+            dets.append(self._limit_detection(self.max_input_chars))
         action, _ = policy.decide(dets, self.block_threshold, self.flag_threshold)
         res = ShieldResult(action=action, stage="output", detections=dets, output=text)
         return self._emit(res) if _emit else res
