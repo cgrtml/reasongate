@@ -8,11 +8,6 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.9"
-      - key: VOYAGE_API_KEY
-        sync: false      # Render panelinden gizli olarak gir
-      - key: ANTHROPIC_API_KEY
-        sync: false      # Render panelinden gizli olarak gir
-      - key: DEMO_KEY
-        sync: false      # erisim kodu: belirle, sadece ?key=KODUN paylasanlar kullanir
-      - key: DAILY_LIMIT
-        value: "150"     # gunluk maks istek (maliyet tavani)
+      # Rule-core demo needs NO secrets. Optional overrides:
+      # - key: DEMO_KEY     (restrict access to ?key=… holders)
+      # - key: ANTHROPIC_API_KEY  (use a real Claude bot in /chat instead of a canned reply)
