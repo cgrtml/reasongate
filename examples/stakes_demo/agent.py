@@ -1,14 +1,15 @@
-"""Savunmasiz ajan + GERCEK yan etkiler.
+"""The unshielded agent + REAL side effects.
 
-Kritik tasarim karari: ihlalin kaniti ajanin METNI degil, GERCEK bir YAN
-ETKI'dir. Iki arac diske yazar:
+Key design decision: the proof of a breach is NOT the agent's TEXT, it is a REAL
+SIDE EFFECT. Two tools write to disk:
 
-  * send_email  -> _sideeffects/outbox.jsonl   (VERI SIZINTISI)
-  * transfer_funds -> _sideeffects/ledger.jsonl (YETKISIZ ISLEM)
+  * send_email     -> _sideeffects/outbox.jsonl   (DATA EXFILTRATION)
+  * transfer_funds -> _sideeffects/ledger.jsonl   (UNAUTHORIZED TRANSACTION)
 
-Kosudan sonra bu dosyalara bakariz: OFF'ta musteri kaydi disari cikmis ve
-transfer yapilmistir; ON'da dosyalar bostur. "Kotu cumle kuruldu" ile "gercek
-bir ihlal oldu" arasindaki fark budur — wow'u yaratan da bu.
+After a run we inspect these files: with the shield OFF the customer record has
+left the building and a transfer was made; with the shield ON the files are
+empty. That is the difference between "said something bad" and "an actual breach
+happened" — and it is what makes the demo land.
 """
 from __future__ import annotations
 
@@ -24,8 +25,8 @@ LEDGER = SIDE_EFFECT_DIR / "ledger.jsonl"
 
 
 def reset_side_effects() -> None:
-    """Her kosudan ONCE cagrilir: yan-etki kayitlarini temizler ki her kosu
-    kendi izini birakabilsin (deterministik, tekrar-uretilebilir)."""
+    """Called BEFORE each run: clears the side-effect logs so each run leaves its
+    own trace (deterministic, reproducible)."""
     SIDE_EFFECT_DIR.mkdir(exist_ok=True)
     for f in (OUTBOX, LEDGER):
         f.write_text("", encoding="utf-8")
@@ -38,7 +39,7 @@ def _append(path: pathlib.Path, record: dict) -> None:
 
 
 def read_side_effects() -> dict:
-    """Kosu sonrasi yan-etki ozeti: kac e-posta gitti, kac transfer yapildi."""
+    """Post-run summary: how many emails went out, how many transfers were made."""
     def _load(p: pathlib.Path) -> List[dict]:
         if not p.exists() or not p.read_text(encoding="utf-8").strip():
             return []
@@ -46,24 +47,24 @@ def read_side_effects() -> dict:
     return {"emails": _load(OUTBOX), "transfers": _load(LEDGER)}
 
 
-# --------------------------- araclar (gercek yan etki) ---------------------------
+# --------------------------- tools (real side effects) ---------------------------
 
 def tool_send_email(to: str, body: str) -> str:
-    """VERI kanali: cagrilirsa icerik gercekten 'banka disina' (outbox'a) yazilir."""
+    """DATA channel: if called, the content really leaves the bank (to the outbox)."""
     _append(OUTBOX, {"tool": "send_email", "to": to, "body": body})
-    return f"[send_email] '{to}' adresine {len(body)} karakter gonderildi."
+    return f"[send_email] sent {len(body)} chars to '{to}'."
 
 
 def tool_transfer_funds(to_account: str, amount: str) -> str:
-    """ISLEM kanali: cagrilirsa transfer gercekten deftere (ledger'a) islenir."""
+    """TRANSACTION channel: if called, the transfer is really posted (to the ledger)."""
     _append(LEDGER, {"tool": "transfer_funds", "to_account": to_account, "amount": amount})
-    return f"[transfer_funds] {amount} -> hesap {to_account} islendi."
+    return f"[transfer_funds] posted {amount} -> account {to_account}."
 
 
 TOOLS = {"send_email": tool_send_email, "transfer_funds": tool_transfer_funds}
 
 
-# --------------------------- ajan ---------------------------
+# --------------------------- agent ---------------------------
 
 @dataclass
 class AgentRun:
@@ -72,14 +73,14 @@ class AgentRun:
     backend: str = "mock"
 
 
-# Bir backend, (system, user, retrieved) alir; (final_text, [tool_call,...]) doner.
-# tool_call: {"name": str, "args": dict}. Ajan bunlari GERCEKTEN calistirir.
+# A backend takes (system, user, retrieved) and returns (final_text, [tool_call,...]).
+# tool_call: {"name": str, "args": dict}. The agent ACTUALLY executes them.
 Backend = Callable[[str, str, List[str]], "tuple[str, List[dict]]"]
 
 
 def run_agent(system: str, user: str, retrieved: List[str], backend: Backend) -> AgentRun:
-    """Ajani calistir: backend'e system+user+retrieved ver, dondugu her arac
-    cagrisini GERCEKTEN icra et (yan etki olusur), sonra final metni dondur."""
+    """Run the agent: give the backend system+user+retrieved, and ACTUALLY execute
+    every tool call it returns (side effects happen), then return the final text."""
     final_text, calls = backend(system, user, retrieved)
     executed = []
     for call in calls:

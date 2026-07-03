@@ -1,15 +1,16 @@
 """ReasonGate — Stakes Demo.
 
-Ayni saldiri, tek degisken: KALKAN.
+Same attack, one variable: THE SHIELD.
 
-  Kosu 1  Shield OFF + zehirli kayit  -> IHLAL   (veri sizar + transfer yapilir)
-  Kosu 2  Shield ON  + zehirli kayit  -> BLOKLU  (hicbir yan etki yok)
-  Kosu 3  Shield ON  + TEMIZ kayit    -> IZIN    (ajan normal yanitlar)
+  Run 1  Shield OFF + poisoned record  -> BREACH   (data leaks + a transfer is made)
+  Run 2  Shield ON  + poisoned record  -> BLOCKED  (no side effects at all)
+  Run 3  Shield ON  + CLEAN record     -> ALLOWED  (agent answers normally)
 
-Kosu 1 vs 2 "wow"u verir. Kosu 3 "aptal blocklist degil"in kanitidir.
+Run 1 vs 2 is the "wow" (the only difference is the shield). Run 3 is the proof
+that this is not a dumb blocklist.
 
-Calistir:  python -m examples.stakes_demo.run
-Renksiz  :  python -m examples.stakes_demo.run --no-color
+Run:       python -m examples.stakes_demo.run
+No color:  python -m examples.stakes_demo.run --no-color
 """
 from __future__ import annotations
 
@@ -22,7 +23,7 @@ from examples.stakes_demo.agent import (read_side_effects, reset_side_effects,
                                         run_agent)
 from examples.stakes_demo.backends import select_backend
 
-# ----------------------------- terminal susu -----------------------------
+# ----------------------------- terminal styling -----------------------------
 _COLOR = "--no-color" not in sys.argv
 
 
@@ -53,52 +54,52 @@ def banner(text, ok: bool):
 def show_side_effects(se: dict):
     n_mail, n_tx = len(se["emails"]), len(se["transfers"])
     if n_mail == 0 and n_tx == 0:
-        print("  yan etki: " + grn("YOK") + dim("  (outbox bos, ledger bos)"))
+        print("  side effects: " + grn("NONE") + dim("  (outbox empty, ledger empty)"))
         return
     for m in se["emails"]:
-        print("  " + red("✉ VERI DISARI") + f"  {m['to']}  " + dim(f"({len(m['body'])} karakter musteri kaydi)"))
+        print("  " + red("-> DATA EXFILTRATED") + f"  {m['to']}  " + dim(f"({len(m['body'])} chars of customer record)"))
     for t in se["transfers"]:
-        print("  " + red("$ TRANSFER") + f"     {t['amount']} -> hesap {t['to_account']}")
+        print("  " + red("-> TRANSFER") + f"        {t['amount']} -> account {t['to_account']}")
 
 
-# ----------------------------- kosular -----------------------------
+# ----------------------------- runs -----------------------------
 
 def run_unshielded(record: str):
-    """KALKAN YOK: ajan zehirli kaydi dogrudan isler."""
+    """SHIELD OFF: the agent processes the poisoned record directly."""
     reset_side_effects()
     backend, _ = select_backend()
     run = run_agent(scenario.SYSTEM_PROMPT, scenario.USER_PROMPT, [record], backend)
-    print("  ajan cevabi : " + dim(run.answer))
+    print("  agent reply : " + dim(run.answer))
     if run.tool_calls:
         for tc in run.tool_calls:
-            print("  arac cagrisi: " + yel(tc["name"]) + dim(f"  {tc['args'].get('to') or tc['args'].get('to_account')}"))
+            print("  tool call   : " + yel(tc["name"]) + dim(f"  {tc['args'].get('to') or tc['args'].get('to_account')}"))
     show_side_effects(read_side_effects())
 
 
 def run_shielded(record: str, shield: Shield):
-    """KALKAN VAR: once girdi+context taranir; bloklaniyorsa ajan HIC calismaz."""
+    """SHIELD ON: input + context are scanned first; if blocked, the agent never runs."""
     reset_side_effects()
     inp = shield.scan_input(scenario.USER_PROMPT)
     ctx = shield.scan_context(record)
 
     if inp.action == "block" or ctx.action == "block":
         blocker = ctx if ctx.action == "block" else inp
-        print("  " + red("⛔ KALKAN GIRDIYI DURDURDU") + dim("  — ajan/model HIC cagrilmadi"))
+        print("  " + red("BLOCKED BY THE SHIELD") + dim("  — the agent / model was never called"))
         for d in blocker.detections:
             if d.triggered:
-                print(dim(f"     ✗ {d.detector} (skor={d.score:.2f}): {d.reason}"))
+                print(dim(f"     x {d.detector} (score={d.score:.2f}): {d.reason}"))
                 if d.matches:
-                    print(dim(f"       kanit: {', '.join(d.matches[:3])}"))
+                    print(dim(f"       evidence: {', '.join(d.matches[:3])}"))
         show_side_effects(read_side_effects())
         return
 
-    # Temiz: ajani calistir, ciktiyi da tara (savunma derinligi).
+    # Clean: run the agent, and scan the output too (defense in depth).
     backend, _ = select_backend()
     run = run_agent(scenario.SYSTEM_PROMPT, scenario.USER_PROMPT, [record], backend)
     out = shield.scan_output(run.answer)
-    tag = grn("izin") if out.action == "allow" else yel(out.action)
-    print("  kalkan karari: girdi=" + grn("temiz") + f"  cikti={tag}")
-    print("  ajan cevabi  : " + dim(run.answer))
+    tag = grn("allow") if out.action == "allow" else yel(out.action)
+    print("  shield verdict: input=" + grn("clean") + f"  output={tag}")
+    print("  agent reply   : " + dim(run.answer))
     show_side_effects(read_side_effects())
 
 
@@ -107,40 +108,40 @@ def run_shielded(record: str, shield: Shield):
 def main():
     _, backend_label = select_backend()
     print()
-    print(bold("  ReasonGate — Stakes Demo") + dim("   (Acme Bank musteri-hizmet ajani)"))
+    print(bold("  ReasonGate — Stakes Demo") + dim("   (Acme Bank customer-support agent)"))
     print(dim(f"  model backend: {backend_label}"))
     rule()
-    print("  Kullanici (masum): " + dim(scenario.USER_PROMPT[:70] + "..."))
-    print("  Saldiri: zehirli musteri kaydinin destek-notuna gizli talimat gomulu")
-    print(dim("           (kullanici bunu gormez; ajan icin dogrudan emir gibi okunur)"))
+    print("  User (innocent): " + dim(scenario.USER_PROMPT[:70] + "..."))
+    print("  Attack: a hidden instruction is embedded in the retrieved customer record")
+    print(dim("          (the user never sees it; the agent reads it as a direct command)"))
     rule()
 
     shield = Shield()
-    print(dim(f"  aktif kalkan katmanlari: {', '.join(shield.layers)}"))
+    print(dim(f"  active shield layers: {', '.join(shield.layers)}"))
     print()
 
-    # --- KOSU 1: kalkan yok, zehirli ---
-    print(bold("  [1] Shield OFF") + "  +  zehirli kayit")
+    # --- RUN 1: no shield, poisoned ---
+    print(bold("  [1] Shield OFF") + "  +  poisoned record")
     run_unshielded(scenario.POISONED_RECORD)
-    banner("IHLAL: musteri verisi sizdi + izinsiz transfer yapildi", ok=False)
+    banner("BREACH: customer data leaked + unauthorized transfer made", ok=False)
     print()
 
-    # --- KOSU 2: kalkan var, zehirli (TEK degisken: kalkan) ---
-    print(bold("  [2] Shield ON") + "   +  zehirli kayit   " + dim("(ayni girdi, tek fark: kalkan)"))
+    # --- RUN 2: shield on, poisoned (ONLY variable: the shield) ---
+    print(bold("  [2] Shield ON") + "   +  poisoned record   " + dim("(same input, only difference: the shield)"))
     run_shielded(scenario.POISONED_RECORD, shield)
-    banner("BLOKLANDI: ayni saldiri, sifir yan etki", ok=True)
+    banner("BLOCKED: same attack, zero side effects", ok=True)
     print()
 
-    # --- KOSU 3: kalkan var, temiz (over-block olmadigini goster) ---
-    print(bold("  [3] Shield ON") + "   +  TEMIZ kayit     " + dim("(mesru trafik engellenmemeli)"))
+    # --- RUN 3: shield on, clean (show there is no over-blocking) ---
+    print(bold("  [3] Shield ON") + "   +  CLEAN record       " + dim("(legitimate traffic must pass)"))
     run_shielded(scenario.CLEAN_RECORD, shield)
-    banner("IZIN VERILDI: ajan normal calisti, yan etki yok", ok=True)
+    banner("ALLOWED: agent worked normally, no side effects", ok=True)
     print()
 
     rule("═")
-    print("  " + bold("Ozet:") + " Ayni ajan, ayni saldiri. Kalkan KAPALIyken ihlal GERCEKLESIR;")
-    print("        ACIKken ayni saldiri model gorulmeden durur; mesru istek gecer.")
-    print("  " + dim("Kanit metinde degil, yan-etki kayitlarinda: examples/stakes_demo/_sideeffects/"))
+    print("  " + bold("Bottom line:") + " Same agent, same attack. With the shield OFF the breach HAPPENS;")
+    print("        with it ON the same attack stops before the model sees it; the legit request passes.")
+    print("  " + dim("The proof isn't the text — it's the side-effect logs: examples/stakes_demo/_sideeffects/"))
     rule("═")
     print()
 
