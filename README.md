@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/cgrtml/reasongate/actions/workflows/ci.yml/badge.svg)](https://github.com/cgrtml/reasongate/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
+![License](https://img.shields.io/badge/license-Apache--2.0-green)
 ![Core deps](https://img.shields.io/badge/core%20dependencies-0-success)
 
 **An explainable security gate for LLM applications. Every decision carries a reason you can audit.**
@@ -192,4 +192,5 @@ I would rather you know these up front than discover them in production.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Apache-2.0 — see [LICENSE](LICENSE). (Includes a patent grant; the enterprise
+add-on is separately licensed.)
