@@ -7,6 +7,12 @@
 
 **An explainable security gate for LLM applications. Every decision carries a reason you can audit.**
 
+### ▶ [Try the live demo](https://reasongate-demo-nvgo.onrender.com) — paste a prompt, watch it get blocked *with a reason* and an auditable record
+
+See it [block a direct attack](https://reasongate-demo-nvgo.onrender.com/?run=atk) or a
+[hidden, zero-width-obfuscated one](https://reasongate-demo-nvgo.onrender.com/?run=zw) — runs on the
+zero-dependency core, no API keys, no data leaves the server.
+
 Prompt injection is the top item on the [OWASP LLM Top 10](https://owasp.org/www-project-top-10-for-large-language-model-applications/) for a structural reason: a language model reads instructions and data through the same channel and cannot reliably tell them apart. You do not fix that inside the model. You put a gate in front of it.
 
 Most gates are black boxes — a confidence score and a yes/no. That is not good enough for anyone who has to defend a decision to a security team, an auditor, or a regulator. ReasonGate blocks the attack *and* tells you which signal fired, what it matched, and the closest known attack it resembles. A block you cannot explain is a block you cannot ship.

@@ -171,6 +171,13 @@ async function scan(){
   }catch(e){out.innerHTML='<div class="verdict b-flag">Error: '+esc(''+e)+'</div>';}
   finally{go.disabled=false;}
 }
+
+// Deep-link: ?run=atk|tr|zw|ok auto-runs a preset -> shareable "watch it block" links.
+(function(){
+  const RUN=new URLSearchParams(location.search).get('run');
+  if(RUN && PRESETS[RUN]){ q.value=PRESETS[RUN];
+    scan().then(()=>out.scrollIntoView({behavior:'smooth',block:'center'})); }
+})();
 </script>
 </body>
 </html>
