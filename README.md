@@ -13,6 +13,8 @@ A bank support agent has tools (`send_email`, `transfer_funds`) and is handed a 
 record with a hidden instruction inside it (indirect injection — the dominant attack on
 RAG / agents). **Same attack, one variable: the shield.**
 
+![Stakes demo — Shield OFF: the customer record is exfiltrated and $84,200 is wired out; Shield ON: the same attack is blocked before the model is called](docs/stakes.gif)
+
 | Shield | Record | Result |
 |---|---|---|
 | **OFF** | poisoned | 🔴 **breach** — the customer record is emailed to the attacker and **$84,200 is wired out** (real side effects, written to disk) |
