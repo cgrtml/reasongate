@@ -7,6 +7,25 @@
 
 **An explainable security gate for LLM applications. Every decision carries a reason you can audit.**
 
+### See it prevent a real breach — not just flag a bad string
+
+A bank support agent has tools (`send_email`, `transfer_funds`) and is handed a customer
+record with a hidden instruction inside it (indirect injection — the dominant attack on
+RAG / agents). **Same attack, one variable: the shield.**
+
+| Shield | Record | Result |
+|---|---|---|
+| **OFF** | poisoned | 🔴 **breach** — the customer record is emailed to the attacker and **$84,200 is wired out** (real side effects, written to disk) |
+| **ON** | poisoned | 🟢 **blocked** — *same input*; the injection is caught **before the model is ever called**; zero side effects |
+| **ON** | clean | 🟢 **allowed** — the agent answers normally (not a dumb blocklist) |
+
+The proof isn't the agent's words — it's the side effects that *did not happen*. Run it
+yourself (deterministic, no API key needed); it's a **CI-enforced invariant**, not a screenshot:
+
+```bash
+python -m examples.stakes_demo.run     # see examples/stakes_demo/
+```
+
 ### ▶ [Try the live demo](https://reasongate-demo-nvgo.onrender.com) — paste a prompt, watch it get blocked *with a reason* and an auditable record
 
 See it [block a direct attack](https://reasongate-demo-nvgo.onrender.com/?run=atk) or a
