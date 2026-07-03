@@ -1,0 +1,12 @@
+name: keepalive
+# Pings the free Render demo so it doesn't cold-start (~30-60s) for visitors.
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # every 10 min (GitHub may delay free-tier schedules)
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping demo health
+        run: curl -sS -m 40 https://reasongate-demo-nvgo.onrender.com/health || true
