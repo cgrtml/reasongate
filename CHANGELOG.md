@@ -4,6 +4,22 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); this project aims for semantic
 versioning once it reaches 1.0.
 
+## [0.2.0]
+
+### Changed — open-core boundary
+- **The ML detector, its trained model, and the provenance detector moved to the
+  separate `reasongate-enterprise` add-on.** The open core is now rule-only
+  (rule + normalization + indirect-injection + leakage + canary) with a **plugin
+  seam**: installing `reasongate-enterprise` auto-enables ML + provenance via entry
+  points (`reasongate.detectors`, `reasongate.provenance`); with nothing installed
+  the core runs rule-only, silently. *If you read the arXiv preprint and are looking
+  for the ML/soft-tree code, it lives in the enterprise add-on; the methodology,
+  thresholds, and the reproducible benchmark harness (`eval/`, `RESULTS.md`) stay here.*
+- `ShieldResult.layers` reports which layers were active (e.g. `["injection",
+  "normalization"]` vs `+["ml_injection", "provenance"]`), also in the audit record.
+- `reasongate.registry`: entry-point plugin loading; a failing plugin is skipped,
+  never breaking the gate.
+
 ## [Unreleased]
 
 ### Added

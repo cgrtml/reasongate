@@ -6,4 +6,4 @@ from reasongate.types import (AUDIT_SCHEMA_VERSION, Detection, Segment,
 
 __all__ = ["Shield", "Detection", "Segment", "ShieldResult",
            "AuditHook", "log_sink", "file_sink", "AUDIT_SCHEMA_VERSION"]
-__version__ = "0.1.0"
+__version__ = "0.2.0"

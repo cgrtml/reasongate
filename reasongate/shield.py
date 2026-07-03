@@ -11,13 +11,12 @@ from __future__ import annotations
 
 from typing import Callable, List, Optional
 
-from reasongate import policy
+from reasongate import policy, registry
 from reasongate.audit import AuditHook, safe_emit
 from reasongate.detectors.base import Detector
 from reasongate.detectors import (InjectionDetector, LeakageDetector,
                                  NormalizationDetector)
 from reasongate.detectors.indirect import IndirectInjectionDetector
-from reasongate.detectors.provenance import ProvenanceDetector
 from reasongate.types import Detection, Segment, ShieldResult
 
 
@@ -31,21 +30,27 @@ class Shield:
                  provenance_cap: float = 0.5,
                  audit_hook: Optional[AuditHook] = None,
                  max_input_chars: int = 50_000):
-        # Varsayilan: injection + obfuscation (gizleme) kalkani birlikte.
-        # NormalizationDetector regex'i atlatmak icin gizlenmis saldirilari
-        # (zero-width, homoglyph, leetspeak, aralikli harf) yakalar.
-        self.input_detectors = input_detectors if input_detectors is not None else [
-            InjectionDetector(), NormalizationDetector()]
-        self.output_detectors = output_detectors if output_detectors is not None else [LeakageDetector()]
+        # Eklenti dedektorleri: ayri kurulu paketler (orn. kurumsal ML/provenance
+        # eklentisi) entry-point ile katkida bulunur. Eklenti yoksa cekirdek
+        # SESSIZCE rule-only calisir (bkz. reasongate.registry).
+        by_stage = {"input": [], "context": [], "output": []}
+        for d in registry.load_plugin_detectors():
+            by_stage.get(getattr(d, "stage", "input"), by_stage["input"]).append(d)
+
+        # Varsayilan: injection + obfuscation (gizleme) + varsa eklenti dedektorleri.
+        self.input_detectors = input_detectors if input_detectors is not None else (
+            [InjectionDetector(), NormalizationDetector()] + by_stage["input"])
+        self.output_detectors = output_detectors if output_detectors is not None else (
+            [LeakageDetector()] + by_stage["output"])
         # Context (RAG/tool) dedektorleri: dolayli enjeksiyon icin.
-        self.context_detectors = context_detectors if context_detectors is not None else [
-            IndirectInjectionDetector()]
+        self.context_detectors = context_detectors if context_detectors is not None else (
+            [IndirectInjectionDetector()] + by_stage["context"])
         self.block_threshold = block_threshold
         self.flag_threshold = flag_threshold
-        # Provenance: SADECE Segment-API'ye opt-in edilince calisir (asagida).
-        # Plain str/list[str] -> provenance KAPALI -> eski davranis birebir.
-        # CAP karar-seviyesi karma-guven FPR'den kalibre edilecek (su an parametre).
-        self._provenance = ProvenanceDetector(cap=provenance_cap)
+        # Provenance (Segment-farkinda) saglayici KURUMSAL EKLENTIDIR: kuruluysa
+        # entry-point'ten yuklenir, yoksa None -> provenance KAPALI (Segment-API
+        # yine kabul edilir, plain-str davranisi; dokumantasyondaki fallback).
+        self._provenance = registry.load_provenance(cap=provenance_cap)
         # Denetim kancasi: her karar burdan yayinlanir (varsayilan: yok).
         # Bkz. reasongate.audit (log_sink / file_sink) — kurumsal SIEM
         # sink'leri bu kanca uzerine private katmanda kurulur.
@@ -54,6 +59,13 @@ class Shield:
         # DoS ettirmemeli (regex catastrophic-backtracking ve bellek/CPU tuketimi).
         # Girdi bu limitin ustundeyse taramadan ONCE kirpilir ve denetime islenir.
         self.max_input_chars = int(max_input_chars)
+
+        # Aktif katmanlar (rule-only mu, +ml / +provenance mi) — hem debug hem
+        # kurumsal kullanicinin "ne acildigini" gormesi icin. Her karara islenir.
+        names = [d.name for d in self.input_detectors + self.context_detectors + self.output_detectors]
+        if self._provenance is not None:
+            names.append(getattr(self._provenance, "name", "provenance"))
+        self.layers = sorted(set(names))
 
     def _bound(self, text: Optional[str]):
         """Girdiyi max_input_chars'a kirpar. Donus: (kirpilmis_metin, kirpildi_mi)."""
@@ -68,7 +80,8 @@ class Shield:
 
     def _emit(self, result: ShieldResult) -> ShieldResult:
         """Kararı denetim kancasina yollar (ayarliysa) ve aynen geri doner.
-        Denetim yayini guvenlik kararini ASLA bozmaz (bkz. audit.safe_emit)."""
+        Aktif katmanlari da karara isler. Denetim ASLA kariri bozmaz (audit.safe_emit)."""
+        result.layers = self.layers
         if self.audit_hook is not None:
             safe_emit(self.audit_hook, result)
         return result
@@ -103,7 +116,7 @@ class Shield:
                 if det.matches:                      # sadece sinyal taşıyanları raporla
                     det.reason = f"[parca {i}] " + det.reason
                     dets.append(det)
-            if provenance_on and seg is not None:
+            if provenance_on and seg is not None and self._provenance is not None:
                 pdet = self._provenance.scan_segment(seg)
                 if pdet.matches:
                     pdet.reason = f"[parca {i}] " + pdet.reason

@@ -70,6 +70,9 @@ class ShieldResult:
     # --- Denetim alanlari: her karar benzersiz ve zaman-damgali izlenebilir ---
     decision_id: str = field(default_factory=_new_decision_id)
     timestamp: float = field(default_factory=_now_epoch)  # UTC epoch saniye
+    # Bu karari ureten aktif katmanlar (orn. ["injection","normalization"] vs
+    # +["ml_injection","provenance"]). Kurumsal eklenti kuruluysa burada gorunur.
+    layers: List[str] = field(default_factory=list)
 
     @property
     def allowed(self) -> bool:
@@ -98,6 +101,7 @@ class ShieldResult:
             "action": self.action,
             "allowed": self.allowed,
             "risk_score": self.risk_score,
+            "layers": self.layers,
             "triggered_detectors": self.triggered_detectors,
             "detections": [d.to_dict() for d in self.detections],
         }

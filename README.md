@@ -23,7 +23,20 @@ ReasonGate is model-agnostic. It wraps any `prompt -> str` function — OpenAI, 
 pip install reasongate
 ```
 
-The core (rule, normalization, indirect-injection and leakage detectors) is pure Python with **zero dependencies**. The embedding-based ML detector is an optional extra.
+The core (rule, normalization, indirect-injection and leakage detectors) is pure Python with **zero dependencies**.
+
+### Architecture: open core + enterprise add-on
+
+The open core is **rule-only** and self-contained. It exposes a stable `Detector`
+interface and a plugin seam (`reasongate.registry`, entry-point groups
+`reasongate.detectors` / `reasongate.provenance`). Installing the separate
+**`reasongate-enterprise`** add-on auto-enables the embedding-based **ML detector**
+and the **provenance** detector — the core needs no code change, and every decision's
+`ShieldResult.layers` shows which layers ran (`["injection", "normalization"]` vs
+`+["ml_injection", "provenance"]`). With nothing installed, the core runs rule-only,
+silently. The methodology, thresholds, and reproducible benchmark harness (`eval/`,
+[RESULTS.md](RESULTS.md)) stay in this repo; the trained model and ML/provenance code
+ship in the add-on.
 
 ## Defense in layers
 
