@@ -12,22 +12,22 @@ from typing import List, Tuple
 from reasongate.detectors.base import Detector
 from reasongate.types import Detection
 
-# (regex, insan-okunur etiket, agirlik)
+# (regex, human-readable label, weight)  — labels are shown to users; patterns are not.
 _PATTERNS: List[Tuple[str, str, float]] = [
-    (r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions", "onceki talimatlari yoksay", 0.9),
-    (r"disregard\s+(the\s+)?(above|previous|system)", "yukaridakini gozardi et", 0.8),
-    # TR kaliplari diyakritik-toleransli: hem "onceki tum" hem "önceki tüm" eslesir.
-    (r"[öo]nceki\s+(t[üu]m\s+)?(talimatlar[ıi]|komutlar[ıi])\s+(yoksay|g[öo]zard[ıi]|unut)", "onceki talimatlari yoksay (TR)", 0.9),
-    (r"(reveal|show|print|repeat)\s+(your\s+)?(system\s+)?(prompt|instructions)", "sistem promptunu sizdir", 0.9),
-    # TR "sistem promptunu göster/ifşa et/sızdır/yazdır" — guclu sizdirma niyeti.
-    (r"sistem\s+prompt\w*.{0,20}(g[öo]ster|if[şs]a|s[ıi]zd[ıi]r|yazd[ıi]r|payla[şs])", "sistem promptunu sizdir (TR)", 0.9),
-    (r"sistem\s+prompt", "sistem promptuna atif", 0.6),
+    (r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions", "ignore previous instructions", 0.9),
+    (r"disregard\s+(the\s+)?(above|previous|system)", "disregard the above", 0.8),
+    # TR patterns are diacritic-tolerant: match both "onceki tum" and "önceki tüm".
+    (r"[öo]nceki\s+(t[üu]m\s+)?(talimatlar[ıi]|komutlar[ıi])\s+(yoksay|g[öo]zard[ıi]|unut)", "ignore previous instructions (TR)", 0.9),
+    (r"(reveal|show|print|repeat)\s+(your\s+)?(system\s+)?(prompt|instructions)", "reveal the system prompt", 0.9),
+    # TR "reveal / leak the system prompt".
+    (r"sistem\s+prompt\w*.{0,20}(g[öo]ster|if[şs]a|s[ıi]zd[ıi]r|yazd[ıi]r|payla[şs])", "reveal the system prompt (TR)", 0.9),
+    (r"sistem\s+prompt", "reference to system prompt", 0.6),
     (r"\bDAN\b|do\s+anything\s+now", "DAN jailbreak", 0.85),
     (r"developer\s+mode", "developer mode jailbreak", 0.8),
-    (r"you\s+are\s+now\s+", "rol degistirme (you are now)", 0.6),
-    (r"act\s+as\s+(an?\s+)?(unrestricted|uncensored|evil)", "kisitlamasiz rol iste", 0.85),
-    (r"pretend\s+(to\s+be|you\s+are)", "rol yapma talebi", 0.5),
-    (r"(base64|rot13|hex)\s*(decode|encode)", "kacis icin kodlama", 0.6),
+    (r"you\s+are\s+now\s+", "role change (you are now)", 0.6),
+    (r"act\s+as\s+(an?\s+)?(unrestricted|uncensored|evil)", "request unrestricted role", 0.85),
+    (r"pretend\s+(to\s+be|you\s+are)", "role-play request", 0.5),
+    (r"(base64|rot13|hex)\s*(decode|encode)", "encoding for evasion", 0.6),
 ]
 
 
@@ -48,7 +48,7 @@ class InjectionDetector(Detector):
                 max_w = max(max_w, w)
         triggered = max_w >= self.block_score
         if matches:
-            reason = f"{len(matches)} bilinen injection/jailbreak kalibi eslesti."
+            reason = f"{len(matches)} known injection/jailbreak pattern(s) matched."
         else:
-            reason = "Bilinen injection kalibi bulunmadi."
+            reason = "No known injection pattern found."
         return Detection(self.name, triggered, round(max_w, 2), reason, matches)

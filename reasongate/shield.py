@@ -76,7 +76,7 @@ class Shield:
     @staticmethod
     def _limit_detection(limit: int) -> Detection:
         return Detection("input_limit", False, 0.0,
-                         f"Girdi {limit} karaktere kirpildi (asiri-kaynak/DoS korumasi).", [])
+                         f"Input truncated to {limit} chars (resource-exhaustion / DoS protection).", [])
 
     def _emit(self, result: ShieldResult) -> ShieldResult:
         """Kararı denetim kancasina yollar (ayarliysa) ve aynen geri doner.
@@ -114,12 +114,12 @@ class Shield:
             for d in self.context_detectors:
                 det = d.scan(text)
                 if det.matches:                      # sadece sinyal taşıyanları raporla
-                    det.reason = f"[parca {i}] " + det.reason
+                    det.reason = f"[part {i}] " + det.reason
                     dets.append(det)
             if provenance_on and seg is not None and self._provenance is not None:
                 pdet = self._provenance.scan_segment(seg)
                 if pdet.matches:
-                    pdet.reason = f"[parca {i}] " + pdet.reason
+                    pdet.reason = f"[part {i}] " + pdet.reason
                     dets.append(pdet)
         if not dets:
             res = ShieldResult(action="allow", stage="context", detections=[])

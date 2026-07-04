@@ -117,11 +117,11 @@ class ShieldResult:
 
     def explain(self) -> str:
         """Insan-okunur ozet: ne yapildi ve NEDEN."""
-        head = {"allow": "IZIN VERILDI", "flag": "ISARETLENDI", "block": "BLOKLANDI"}[self.action]
+        head = {"allow": "ALLOWED", "flag": "FLAGGED", "block": "BLOCKED"}[self.action]
         lines = [f"[{self.stage}] {head}"]
         for d in self.detections:
             mark = "✗" if d.triggered else "·"
-            lines.append(f"  {mark} {d.detector} (skor={d.score:.2f}): {d.reason}")
+            lines.append(f"  {mark} {d.detector} (score={d.score:.2f}): {d.reason}")
             if d.triggered and d.matches:
-                lines.append(f"      kanit: {', '.join(d.matches[:5])}")
+                lines.append(f"      evidence: {', '.join(d.matches[:5])}")
         return "\n".join(lines)

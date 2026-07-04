@@ -10,14 +10,14 @@ from reasongate.detectors.base import Detector
 from reasongate.types import Detection
 
 _PATTERNS: List[Tuple[str, str, float]] = [
-    (r"sk-[A-Za-z0-9]{16,}", "OpenAI tarzi API anahtari", 0.95),
+    (r"sk-[A-Za-z0-9]{16,}", "OpenAI-style API key", 0.95),
     (r"(gho_|ghp_)[A-Za-z0-9]{20,}", "GitHub token", 0.95),
     (r"AKIA[0-9A-Z]{16}", "AWS access key", 0.95),
-    (r"-----BEGIN [A-Z ]*PRIVATE KEY-----", "ozel anahtar (PEM)", 0.97),
-    (r"(my\s+system\s+prompt\s+is|sistem\s+promptum)", "sistem promptu sizdiriyor", 0.85),
-    (r"you\s+are\s+a\s+helpful\s+assistant", "olasi sistem promptu metni", 0.5),
-    (r"[\w.+-]+@[\w-]+\.[\w.-]+", "e-posta adresi (PII)", 0.4),
-    (r"\b(?:\d[ -]?){13,16}\b", "olasi kart numarasi (PII)", 0.6),
+    (r"-----BEGIN [A-Z ]*PRIVATE KEY-----", "private key (PEM)", 0.97),
+    (r"(my\s+system\s+prompt\s+is|sistem\s+promptum)", "leaking the system prompt", 0.85),
+    (r"you\s+are\s+a\s+helpful\s+assistant", "possible system-prompt text", 0.5),
+    (r"[\w.+-]+@[\w-]+\.[\w.-]+", "email address (PII)", 0.4),
+    (r"\b(?:\d[ -]?){13,16}\b", "possible card number (PII)", 0.6),
 ]
 
 
@@ -37,6 +37,6 @@ class LeakageDetector(Detector):
                 matches.append(label)
                 max_w = max(max_w, w)
         triggered = max_w >= self.block_score
-        reason = (f"{len(matches)} sizinti/PII kalibi eslesti." if matches
-                  else "Sizinti/PII bulunmadi.")
+        reason = (f"{len(matches)} leakage/PII pattern(s) matched." if matches
+                  else "No leakage/PII found.")
         return Detection(self.name, triggered, round(max_w, 2), reason, matches)

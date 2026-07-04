@@ -29,14 +29,14 @@ class CanaryLeakDetector(Detector):
 
     def __init__(self, canary: str):
         if not canary:
-            raise ValueError("CanaryLeakDetector bos olmayan bir canary ister")
+            raise ValueError("CanaryLeakDetector requires a non-empty canary")
         self.canary = canary
 
     def scan(self, text: str) -> Detection:
         hit = self.canary in (text or "")
         score = 0.99 if hit else 0.0
-        reason = ("Sistem promptu KESIN sizdirildi: gizli canary belirteci "
-                  "ciktida gorundu." if hit else
-                  "Canary belirteci ciktida yok (sistem promptu sizmadi).")
+        reason = ("System prompt DEFINITELY leaked: the hidden canary token "
+                  "appeared in the output." if hit else
+                  "No canary token in the output (system prompt not leaked).")
         matches = [self.canary] if hit else []
         return Detection(self.name, hit, score, reason, matches)

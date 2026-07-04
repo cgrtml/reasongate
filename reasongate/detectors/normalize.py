@@ -122,23 +122,23 @@ def normalize(text: str) -> NormalizationResult:
 
     cleaned, n_stealth = _strip_stealth(text)
     if n_stealth:
-        transforms.append(f"{n_stealth} gorunmez/kontrol karakteri temizlendi")
+        transforms.append(f"{n_stealth} invisible/control char(s) stripped")
 
     cleaned = unicodedata.normalize("NFKC", cleaned)
 
     cleaned, n_homo = _fold_homoglyphs(cleaned)
     if n_homo:
-        transforms.append(f"{n_homo} homoglyph (Kiril/Yunan->Latin) katlandi")
+        transforms.append(f"{n_homo} homoglyph(s) folded (Cyrillic/Greek->Latin)")
 
     variants: List[str] = []
     collapsed = _collapse_spaced(cleaned)
     if collapsed != cleaned:
-        transforms.append("aralikli/ayrac-kirmali harfler birlestirildi")
+        transforms.append("spaced / separator-broken letters joined")
         variants.append(collapsed)
 
     leet = cleaned.translate(_LEET)
     if leet != cleaned:
-        transforms.append("leetspeak katlandi (0->o, 1->i, ...)")
+        transforms.append("leetspeak folded (0->o, 1->i, ...)")
         variants.append(leet)
         # leet + collapsed birlesimi de bir yuzey
         leet_collapsed = _collapse_spaced(leet)
@@ -146,7 +146,7 @@ def normalize(text: str) -> NormalizationResult:
             variants.append(leet_collapsed)
 
     for dec in _decode_b64(cleaned):
-        transforms.append("base64 yuk cozuldu")
+        transforms.append("base64 payload decoded")
         variants.append(dec)
 
     return NormalizationResult(
@@ -181,7 +181,7 @@ class NormalizationDetector(Detector):
 
         if norm.stealth_found:
             score = max(score, 0.9)
-            evidence.append("gizli/gorunmez karakter")
+            evidence.append("hidden/invisible character")
 
         raw_hit = self._inj.scan(text)
         surfaces = [norm.text, *norm.variants]
@@ -195,12 +195,12 @@ class NormalizationDetector(Detector):
 
         if best_obf is not None:
             score = max(score, min(1.0, best_obf.score + 0.1))  # gizleme = niyet bonusu
-            evidence.append(f"gizlenmis injection ({', '.join(best_obf.matches[:3])})")
+            evidence.append(f"obfuscated injection ({', '.join(best_obf.matches[:3])})")
 
         triggered = score >= self.threshold
         if evidence:
-            reason = ("Obfuscation tespit edildi: " + "; ".join(evidence)
-                      + (". Donusumler: " + ", ".join(norm.transforms) if norm.transforms else ""))
+            reason = ("Obfuscation detected: " + "; ".join(evidence)
+                      + (". Transforms: " + ", ".join(norm.transforms) if norm.transforms else ""))
         else:
-            reason = "Gizleme/obfuscation belirtisi yok."
+            reason = "No obfuscation detected."
         return Detection(self.name, triggered, round(score, 2), reason, evidence)

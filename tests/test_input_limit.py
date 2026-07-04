@@ -15,7 +15,7 @@ def test_oversized_input_is_truncated_and_flagged():
     names = [d.detector for d in res.detections]
     assert "input_limit" in names
     d = next(x for x in res.detections if x.detector == "input_limit")
-    assert "kirpildi" in d.reason.lower() or "1000" in d.reason
+    assert "truncat" in d.reason.lower() or "1000" in d.reason
 
 
 def test_normal_input_not_flagged():
