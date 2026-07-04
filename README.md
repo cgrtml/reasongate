@@ -7,7 +7,7 @@
 
 **An explainable security gate for LLM applications. Every decision carries a reason you can audit.**
 
-### See it prevent a real breach — not just flag a bad string
+### See it prevent a real breach not just flag a bad string
 
 A bank support agent has tools (`send_email`, `transfer_funds`) and is handed a customer
 record with a hidden instruction inside it (indirect injection — the dominant attack on
