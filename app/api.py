@@ -10,6 +10,7 @@ no model download, no cost. It showcases the honest strengths — explainable bl
 obfuscation resistance, and a structured, auditable decision record.
 """
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -18,7 +19,7 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from reasongate import Shield
+from reasongate import Segment, Shield, ToolGate, ToolPolicy
 
 app = FastAPI(title="ReasonGate")
 _STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -99,6 +100,67 @@ def health():
 def scan(q: Q, x_demo_key: str = Header(None)):
     _gate(x_demo_key)
     return _full(_shield.scan_input(q.prompt))
+
+
+# --- action gate demo: reworded attack slips past detection, gate blocks the action ---
+# Sensitive tools declared with the argument whose value must not come from untrusted data.
+_AGENT_GATE = ToolGate([
+    ToolPolicy("send_email", sensitive=True, destination_args=("to",)),
+    ToolPolicy("transfer_funds", sensitive=True, destination_args=("to_account",)),
+])
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
+_ACCT_RE = re.compile(r"account\s+(\d{3,})", re.IGNORECASE)
+
+
+def _naive_tool_calls(record: str):
+    """Transparent stand-in for a NAIVE tool-using agent: it acts on action verbs it
+    finds in its context (this is exactly why indirect injection works — not specific
+    to any wording). 'send/forward/email ... <addr>' -> send_email; 'transfer ...
+    account <N>' -> transfer_funds. No side effects: we only propose the calls."""
+    calls = []
+    if re.search(r"\b(send|forward|email|upload|leak)\b", record, re.I):
+        m = _EMAIL_RE.search(record)
+        if m:
+            calls.append({"name": "send_email",
+                          "args": {"to": m.group(0), "body": "<full customer record>"}})
+    if re.search(r"\btransfer\b", record, re.I):
+        m = _ACCT_RE.search(record)
+        if m:
+            calls.append({"name": "transfer_funds",
+                          "args": {"to_account": m.group(1), "amount": "<balance>"}})
+    return calls
+
+
+class Rec(BaseModel):
+    record: str
+
+
+@app.post("/agent")
+def agent(r: Rec, x_demo_key: str = Header(None)):
+    """Two layers on an agent scenario. The signature layer may MISS a reworded
+    attack; the provenance-aware action gate blocks the tool call anyway, because
+    its destination is quoted from untrusted content — phrasing-independent."""
+    _gate(x_demo_key)
+    record = r.record
+    ctx = _shield.scan_context(record)                      # layer 1: detection
+    calls = _naive_tool_calls(record)                       # what a naive agent would do
+    seg = Segment(text=record, source="retrieved-record", trust="untrusted", domain="crm")
+    decisions = _AGENT_GATE.authorize_all(calls, context=[seg])   # layer 2: action gate
+    actions = []
+    for call, dec in zip(calls, decisions):
+        d = dec.detections[0]
+        actions.append({"tool": call["name"], "args": call["args"],
+                        "gate_action": dec.action, "reason": d.reason,
+                        "evidence": list(d.matches)[:2]})
+    blocked = [a for a in actions if a["gate_action"] == "block"]
+    return {
+        "detection": {"action": ctx.action, "triggered": ctx.triggered_detectors},
+        "actions": actions,
+        "detection_missed": ctx.action != "block" and len(actions) > 0,
+        "sensitive_calls": len(actions),
+        "blocked_calls": len(blocked),
+        "breach_prevented": len(blocked) > 0,
+    }
 
 
 @app.post("/chat")
