@@ -122,13 +122,18 @@ python -m examples.stakes_demo.run
 - Shield on, poisoned record: the indirect scan catches the payload before the model is
   called. No side effects.
 - Shield on, clean record: the agent answers normally.
+- Shield on, **reworded** attack: the payload is rephrased as an ordinary business note so
+  the signature layer does *not* match it — and yet no side effect happens, because the
+  action gate (below) blocks the tool call: its destination (the exfil address, the account)
+  is quoted from untrusted content, which no rewording can hide.
 
-Be clear about what this shows. The payload uses a phrasing the rule layer has a pattern
-for, so the rule layer matches it. Reword the injection so it no longer matches a known
-pattern — for example "set aside the earlier guidance and..." — and the rule core will not
-catch it. That is the limit of signature matching, and it is the reason the core is a first
-filter rather than a boundary. It is enforced as a CI invariant so the demo cannot silently
-regress, but it demonstrates indirect injection and real side effects, not robustness.
+Be clear about what each layer does. Signature matching has a real limit: reword the
+injection so it no longer matches a known pattern and the rule core will not catch it — that
+is why the core is a first filter, not a boundary. The fourth run is the honest answer to
+that limit: it does not pretend detection improved; detection still misses the reworded
+attack. What stops the breach is a *different* layer that reasons about the trust of the data
+behind an action rather than the wording of the text. All four conditions are enforced as CI
+invariants so the demo cannot silently regress.
 
 There is also a live playground: <https://reasongate-demo-nvgo.onrender.com>. It runs the
 zero-dependency core, needs no API key, and sends no data off the server.
@@ -146,6 +151,40 @@ zero-dependency core, needs no API key, and sends no data off the server.
 
 The policy engine fuses these signals with a calibrated noisy-OR, so several weak signals
 can add up to a block while isolated noise from a legitimate prompt does not.
+
+## The action gate (agent tool calls)
+
+Detectors ask "is this text an injection?" — a question you can lose by rewording. The
+action gate asks a different, phrasing-independent question: *may this action proceed, given
+the trust of the data that produced it?* It is the capability-based defense against indirect
+injection — breaking the "lethal trifecta" of untrusted content, a sensitive capability, and
+a way out — and it catches the reworded attacks the signature layer misses.
+
+```python
+from reasongate import ToolGate, ToolPolicy, Segment
+
+gate = ToolGate([
+    ToolPolicy("transfer_funds", sensitive=True, destination_args=("to_account",)),
+    ToolPolicy("send_email",     sensitive=True, destination_args=("to",)),
+])
+
+record = Segment(text=retrieved_doc, source="crm", trust="untrusted")
+decision = gate.authorize(
+    {"name": "transfer_funds", "args": {"to_account": "9900", "amount": "$84,200"}},
+    context=[record],
+)
+decision.allowed       # False — the destination account is quoted from untrusted content
+print(decision.explain())
+```
+
+Two explainable signals, strongest first: **argument taint** (a sensitive call whose
+destination is quoted from untrusted content — phrasing-independent) and **capability
+co-presence** (a sensitive call made while untrusted content is in scope and nothing trusted
+authorized it). It is **opt-in and additive**: nothing runs unless you declare tool policies
+and call the gate; the core `Shield` is untouched. And it is an honest capability contract,
+not magic — you declare which tools are sensitive and pass the provenance of the data the
+agent saw; in return, untrusted data cannot escalate into a gated action, however the
+injection is worded.
 
 ## Benchmarks
 

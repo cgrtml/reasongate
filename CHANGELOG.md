@@ -23,6 +23,15 @@ versioning once it reaches 1.0.
 ## [Unreleased]
 
 ### Added
+- **Provenance-aware action gate** (`reasongate.ToolGate`, `ToolPolicy`, `GateDecision`):
+  a capability-based, phrasing-independent layer for agent tool calls. It blocks a
+  sensitive call when its destination is quoted from untrusted content (argument taint)
+  or when it fires while untrusted content is in scope without trusted authorization
+  (capability co-presence) — catching the *reworded* attacks the signature layer misses.
+  Opt-in and additive: nothing runs unless tool policies are declared; the core `Shield`
+  is untouched, and the gate fails closed on sensitive tools without ever raising into the
+  caller. The stakes demo gains a fourth run (reworded attack → detection misses → gate
+  holds), enforced as a CI invariant.
 - **Input hardening**: `Shield(max_input_chars=…)` bounds oversized/pathological input
   before scanning (DoS / catastrophic-backtracking protection); truncation is recorded
   as an `input_limit` detection in the audit trail.

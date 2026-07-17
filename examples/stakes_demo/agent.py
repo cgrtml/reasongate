@@ -70,6 +70,7 @@ TOOLS = {"send_email": tool_send_email, "transfer_funds": tool_transfer_funds}
 class AgentRun:
     answer: str
     tool_calls: List[dict] = field(default_factory=list)
+    blocked_calls: List[dict] = field(default_factory=list)
     backend: str = "mock"
 
 
@@ -78,16 +79,27 @@ class AgentRun:
 Backend = Callable[[str, str, List[str]], "tuple[str, List[dict]]"]
 
 
-def run_agent(system: str, user: str, retrieved: List[str], backend: Backend) -> AgentRun:
+def run_agent(system: str, user: str, retrieved: List[str], backend: Backend,
+              *, gate=None, context_segments=None) -> AgentRun:
     """Run the agent: give the backend system+user+retrieved, and ACTUALLY execute
-    every tool call it returns (side effects happen), then return the final text."""
+    every tool call it returns (side effects happen), then return the final text.
+
+    Optional, opt-in action gate: if `gate` (a reasongate.ToolGate) is given, every
+    proposed tool call is authorized against `context_segments` (the provenance of
+    the retrieved data) BEFORE it runs. Blocked calls never execute — no side effect.
+    With gate=None the behavior is identical to before (existing tests unaffected)."""
     final_text, calls = backend(system, user, retrieved)
-    executed = []
+    executed, blocked = [], []
     for call in calls:
+        if gate is not None:
+            decision = gate.authorize(call, context=context_segments or [])
+            if not decision.allowed:
+                blocked.append({**call, "decision": decision})
+                continue
         fn = TOOLS.get(call["name"])
         if fn is None:
             continue
         result = fn(**call["args"])
         executed.append({**call, "result": result})
-    return AgentRun(answer=final_text, tool_calls=executed,
+    return AgentRun(answer=final_text, tool_calls=executed, blocked_calls=blocked,
                     backend=getattr(backend, "backend_name", "mock"))
