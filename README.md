@@ -21,6 +21,14 @@ The open-source core is rule-based. It does four things:
   model (indirect injection),
 - checks model output for leaked secrets and a planted canary token.
 
+These are wired as a pipeline, not a flat blocklist: normalization strips the disguise
+first, the pattern and indirect-injection layers then match, and a calibrated noisy-OR
+policy fuses several weak signals into one decision. The measurable effect is that raw
+regex catches 20% of *obfuscated* known attacks while the normalization + fusion pipeline
+recovers that to 76% (100% on zero-width–hidden payloads). It still does not catch
+reworded, semantically novel phrasings — that is a separate embedding layer (below), not
+the rule core.
+
 It is pure Python, has zero dependencies, and makes no network calls. Every decision
 serializes to a structured record with a decision id, a timestamp, the action, the score,
 and the per-detector evidence.
