@@ -1,15 +1,16 @@
-"""Public benchmark — ML dedektorunun NOTR (egitimde olmayan) sette recall'u.
+"""Public benchmark - the ML detector's recall on a NEUTRAL (unseen) set.
 
-Model deepset+jackhhao+xTRam1 ile egitildi. Temiz bir genelleme iddiasi icin
-bunlarin DISINDA bir set lazim:
+The model was trained on deepset+jackhhao+xTRam1. A clean generalization claim
+needs a set OUTSIDE all of those:
 
-  - Recall: Lakera/gandalf_ignore_instructions (777 gercek adversarial atak —
-    Gandalf oyununda insanlarin sifre cikarma denemeleri; yaratici/persuasion-
-    tabanli, egitimde YOK). Hepsi saldiri -> recall = bloklanan oran.
-  - FPR: leolee99/NotInject (339 benign) -> ML over-block ediyor mu.
+  - Recall: Lakera/gandalf_ignore_instructions (777 real adversarial attacks -
+    humans trying to extract a password in the Gandalf game; creative and
+    persuasion-based, NOT in training). All of them are attacks, so recall = the
+    blocked fraction.
+  - FPR: leolee99/NotInject (339 benign) -> does the ML layer over-block.
 
-Embedding'ler batch + cache (eval/data/) -> tekrar calistirinca API ucreti yok.
-Cekirdek (offline) ile ML yan yana raporlanir.
+Embeddings are batched and cached (eval/data/), so re-running costs no API calls.
+The core (offline) and the ML layer are reported side by side.
 
   python eval/public_bench_ml.py
 """
@@ -23,6 +24,7 @@ import urllib.request
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from eval._addon import require_addon
 from reasongate.shield import Shield
 from reasongate import embeddings
 
@@ -51,63 +53,64 @@ def _fetch(dataset, split, col, limit=None):
 
 
 def _cached_embed(texts, cache_name):
-    """Batch embed, sonucu cache'le. texts ayni kalirsa API'ye gitme."""
+    """Batch embed and cache the result. If texts are unchanged, do not hit the API."""
     path = os.path.join(DATADIR, cache_name)
     key = hashlib.sha1("\n".join(texts).encode()).hexdigest()
     if os.path.exists(path):
         z = np.load(path, allow_pickle=True)
         if str(z.get("key")) == key:
             return np.asarray(z["emb"], dtype=float)
-    print(f"  embedding ({len(texts)} metin, ~{len(texts)//128 + 1} API cagrisi)...")
+    print(f"  embedding ({len(texts)} texts, ~{len(texts)//128 + 1} API calls)...")
     emb = np.asarray(embeddings.embed(texts, input_type="document"), dtype=float)
     np.savez(path, emb=emb, key=key)
     return emb
 
 
 def main():
+    require_addon()  # the trained model moved to the enterprise add-on in 0.2.0
     import joblib
     model = joblib.load(os.path.join(MODELS, "soft_tree.joblib"))
     th = float(json.load(open(os.path.join(MODELS, "meta.json")))["threshold"])
-    shield = Shield()  # cekirdek (offline)
+    shield = Shield()  # the core (offline)
 
-    print("Lakera/gandalf cekiliyor (notr, egitimde YOK)...")
+    print("Fetching Lakera/gandalf (neutral, NOT in training)...")
     attacks = _fetch("Lakera/gandalf_ignore_instructions", "test", "text")
-    print(f"  {len(attacks)} adversarial atak. Ornek:")
+    print(f"  {len(attacks)} adversarial attacks. Examples:")
     for t in attacks[:2]:
         print(f"    • {t[:90]!r}")
     benign = json.load(open(os.path.join(DATADIR, "notinject.json"), encoding="utf-8"))
     benign = [r["prompt"] for r in benign]
 
-    # --- embeddingler (cache) ---
-    print("Embedding (cache'li):")
+    # --- embeddings (cached) ---
+    print("Embedding (cached):")
     atk_emb = _cached_embed(attacks, "gandalf_emb.npz")
     ben_emb = _cached_embed(benign, "notinject_emb.npz")
 
-    # --- ML tahmin ---
+    # --- ML prediction ---
     atk_p = model.predict_proba(atk_emb)[:, 1]
     ben_p = model.predict_proba(ben_emb)[:, 1]
     ml_recall = 100 * np.mean(atk_p >= th)
     ml_fpr = 100 * np.mean(ben_p >= th)
 
-    # --- Cekirdek (offline) ---
+    # --- Core (offline) ---
     core_recall = 100 * np.mean([shield.scan_input(t).action == "block" for t in attacks])
     core_fpr = 100 * np.mean([shield.scan_input(t).action == "block" for t in benign])
 
     print("\n" + "=" * 64)
-    print("NOTR PUBLIC SET — GENELLEME (model bu setleri GORMEDI)")
+    print("NEUTRAL PUBLIC SET - GENERALIZATION (the model never saw these)")
     print("=" * 64)
-    print(f"Recall  @ Lakera/gandalf  ({len(attacks)} atak):")
-    print(f"  Cekirdek (offline) : %{core_recall:.1f}")
-    print(f"  + ML (soft tree)   : %{ml_recall:.1f}")
+    print(f"Recall  @ Lakera/gandalf  ({len(attacks)} attacks):")
+    print(f"  Core (offline)   : {core_recall:.1f}%")
+    print(f"  + ML (soft tree) : {ml_recall:.1f}%")
     print(f"FPR     @ NotInject       ({len(benign)} benign):")
-    print(f"  Cekirdek (offline) : %{core_fpr:.1f}")
-    print(f"  + ML (soft tree)   : %{ml_fpr:.1f}")
+    print(f"  Core (offline)   : {core_fpr:.1f}%")
+    print(f"  + ML (soft tree) : {ml_fpr:.1f}%")
 
-    print("\n--- README/preprint icin markdown ---")
-    print("| Katman | Recall @ gandalf (neutral) | FPR @ NotInject |")
+    print("\n--- markdown for README/preprint ---")
+    print("| Layer | Recall @ gandalf (neutral) | FPR @ NotInject |")
     print("|---|---:|---:|")
-    print(f"| Core (rule+normalize, offline) | %{core_recall:.1f} | %{core_fpr:.1f} |")
-    print(f"| + ML (VoyageAI → soft tree) | %{ml_recall:.1f} | %{ml_fpr:.1f} |")
+    print(f"| Core (rule+normalize, offline) | {core_recall:.1f}% | {core_fpr:.1f}% |")
+    print(f"| + ML (VoyageAI -> soft tree) | {ml_recall:.1f}% | {ml_fpr:.1f}% |")
 
 
 if __name__ == "__main__":

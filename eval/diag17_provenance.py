@@ -1,14 +1,16 @@
-"""Teshis #17 — PROVENANCE karar-seviyesi karma-guven degerlendirmesi.
+"""Diagnostic #17 - PROVENANCE evaluated at the DECISION level, mixed trust.
 
-Provenance bir AYIRICI degil PRIOR -> sinyal-AUC ANLAMSIZ (bkz. spec). Deger
-yalniz KARAR-SEVIYESI (allow/flag/block) ile gosterilir. Uc bilesen:
-  1. user-trusted imperatif doku (WEDGE): provenance SUSMALI -> ~%100 allow.
-  2. untrusted benign retrieved (over-defense maliyeti): tam fuzyon yiginindan
-     gecince allow/flag/block? -> CAP_PROV bu satirdan TURETILIR.
-  3. untrusted injected (fayda): cap=0'a gore block-orani artiyor mu?
+Provenance is a PRIOR, not a discriminator, so a signal-level AUC is MEANINGLESS
+(see the spec). Its value can only be shown at the DECISION level
+(allow/flag/block). Three components:
+  1. user-trusted imperative text (the WEDGE): provenance must STAY SILENT ->
+     ~100% allow.
+  2. untrusted benign retrieved content (the over-defense cost): after the full
+     fusion stack, is it allow/flag/block? CAP_PROV is DERIVED from this row.
+  3. untrusted injected content (the benefit): does the block rate rise versus cap=0?
 
-CAP_PROV SWEEP: off/0.3/0.35/0.5. Embedding YOK, offline, hizli.
-Cikti: karar-seviyesi tablo -> Cagri ile CAP_PROV ortak kalibrasyonu.
+CAP_PROV SWEEP: off/0.3/0.35/0.5. No embeddings, offline, fast.
+Output: a decision-level table used to calibrate CAP_PROV.
 """
 import json
 import os
@@ -28,7 +30,7 @@ CAPS = [0.0, 0.30, 0.35, 0.50]
 
 def load():
     bi = json.load(open(os.path.join(DATA, "benign_instructional.json")))
-    benign = [x["text"] for x in bi]                       # 305 (tarif+how-to)
+    benign = [x["text"] for x in bi]                       # 305 (recipes + how-to)
     yr = list(json.load(open(os.path.join(DATA, "benign_yourref.json"))))   # 20 wedge
     attacks = json.load(open(os.path.join(DATA, "bipia_text_attacks.json")))
     det = IndirectInjectionDetector()
@@ -42,7 +44,7 @@ def load():
 
 
 def rates(shield, segments):
-    """Her segment'i tek-tek scan_context'ten gecir, action dagilimi."""
+    """Run each segment through scan_context on its own; return the action distribution."""
     c = Counter(shield.scan_context([s]).action for s in segments)
     n = sum(c.values())
     return {k: 100.0 * c.get(k, 0) / n for k in ("allow", "flag", "block")}, n
@@ -55,13 +57,14 @@ def fmt_row(label, r):
 
 def main():
     benign, yr, payloads, fam, recipes = load()
-    # segment setleri
-    # 1) WEDGE: user kendi imperatif dokusunu yapistirmis (ayni tarif metni, trust=user)
+    # the segment sets
+    # 1) WEDGE: the user pasted their own imperative text (same recipe text, trust=user)
     trusted = [Segment(t, source="user", trust="trusted") for t in recipes]
-    # 2) over-defense: benign retrieved (tarif+how-to) + your-ref, untrusted
+    # 2) over-defense: benign retrieved content (recipes+how-to) + your-ref, untrusted
     untrusted_benign = [Segment(t, source="retrieved", trust="untrusted") for t in benign]
     untrusted_yr = [Segment(t, source="retrieved", trust="untrusted") for t in yr]
-    # 3) fayda: payload mesru recipe-host'a gomulu, untrusted (gercek indirect senaryo)
+    # 3) benefit: payload embedded in a legitimate recipe host, untrusted (the real
+    #    indirect-injection scenario)
     injected = [Segment(recipes[i % len(recipes)] + "\n" + p, source="retrieved",
                         trust="untrusted")
                 for i, p in enumerate(payloads)]
@@ -69,8 +72,8 @@ def main():
     inj_f1 = [s for s, f in zip(injected, fam) if f == 1]
 
     print("=" * 74)
-    print("PROVENANCE — karar-seviyesi karma-guven (CAP_PROV sweep, retrieved kaynak)")
-    print("  retrieved agirligi 0.8 -> efektif skor = CAP x 0.8")
+    print("PROVENANCE - decision level, mixed trust (CAP_PROV sweep, retrieved source)")
+    print("  the retrieved source weight is 0.8 -> effective score = CAP x 0.8")
     print("=" * 74)
 
     for cap in CAPS:
@@ -78,18 +81,18 @@ def main():
         tag = "OFF (baseline)" if cap == 0.0 else f"CAP={cap}"
         print(f"\n--- {tag} ---")
         r, n = rates(sh, trusted)
-        print(fmt_row(f"1 WEDGE user-trusted imp ({n})", r) +
-              ("   <- ~100 allow olmali" if cap > 0 else ""))
+        print(fmt_row(f"1 WEDGE user-trusted imperative ({n})", r) +
+              ("   <- must be ~100 allow" if cap > 0 else ""))
         r, _ = rates(sh, untrusted_benign)
-        print(fmt_row(f"2 untrusted benign tarif/howto", r) + "   <- over-defense maliyeti")
+        print(fmt_row(f"2 untrusted benign recipe/howto", r) + "   <- the over-defense cost")
         r, _ = rates(sh, untrusted_yr)
         print(fmt_row(f"2 untrusted your-ref wedge", r))
         rf2, _ = rates(sh, inj_f2)
         rf1, _ = rates(sh, inj_f1)
-        print(fmt_row(f"3 injected AILE-2 ({len(inj_f2)})", rf2) + "   <- fayda (asil hedef)")
-        print(fmt_row(f"3 injected aile-1 ({len(inj_f1)})", rf1))
+        print(fmt_row(f"3 injected FAMILY-2 ({len(inj_f2)})", rf2) + "   <- the benefit (the real target)")
+        print(fmt_row(f"3 injected family-1 ({len(inj_f1)})", rf1))
 
-    # --- NEDEN DUZ: ikinci-sinyal frekansi (provenance fuzyon icin es-sinyal arar) ---
+    # --- WHY IT IS FLAT: the second-signal frequency (fusion needs a co-signal) ---
     from reasongate.policy import fuse, FUSION_FLOOR
     idet = IndirectInjectionDetector()
 
@@ -99,18 +102,19 @@ def main():
                 100.0 * sum(x >= 0.5 for x in sc) / len(sc), max(sc))
 
     print("\n" + "=" * 74)
-    print("NEDEN DUZ — IKINCI-SINYAL frekansi (IndirectInjectionDetector, canli yigin)")
+    print("WHY IT IS FLAT - SECOND-SIGNAL frequency (IndirectInjectionDetector, live stack)")
     print("=" * 74)
     for name, segs in [("untrusted benign", untrusted_benign),
-                       ("injected AILE-2", inj_f2), ("injected aile-1", inj_f1)]:
+                       ("injected FAMILY-2", inj_f2), ("injected family-1", inj_f1)]:
         f30, f50, mx = s2_freq(segs)
-        print(f"  {name:20}: score>=0.30 %{f30:.1f}  >=0.50 %{f50:.1f}  max={mx:.2f}")
-    print("  -> residue (aile-2 ozellikle) ikinci sinyal tripslemiyor; provenance'in")
-    print("     fuzyonda birlesecek es-sinyali YOK -> tek basina sub-flag -> ATIL.")
+        print(f"  {name:20}: score>=0.30 {f30:.1f}%  >=0.50 {f50:.1f}%  max={mx:.2f}")
+    print("  -> the residue (family-2 especially) does not trip a second signal, so")
+    print("     provenance has NO co-signal to fuse with -> sub-flag alone -> INERT.")
 
     print("\n" + "=" * 74)
-    print("ETKILESIM TABLOSU — fuse(provenance=CAPx0.8, ikinci_sinyal s2) -> aksiyon")
-    print("  (provenance'in DEGERI burada: es-sinyal VARSA kararı nasil kaydirir)")
+    print("INTERACTION TABLE - fuse(provenance=CAPx0.8, second signal s2) -> action")
+    print("  (this is where provenance has VALUE: how it shifts the decision when a")
+    print("   co-signal IS present)")
     print("=" * 74)
 
     def act(f):
@@ -124,11 +128,13 @@ def main():
             scores = [x for x in (eff, s2) if x >= FUSION_FLOOR]
             cells.append(f"{act(fuse([eff, s2])):>6}")
         print(f"  {eff:>10} | " + " ".join(cells))
-    print("  OKUMA: es-sinyal yoksa (s2=0) tum CAP'lerde allow (over-defense YOK).")
-    print("  es-sinyal 0.6-0.7 varsa provenance kararı flag/BLOCK'a kaydirir = fayda.")
-    print("  Kalibrasyon: benign'de s2>=0.3 nadir (yukarida) -> arka-kapi riski dusuk;")
-    print("  CAP_PROV es-sinyalli GERCEK saldiriyi block'a tasiyacak ama benign-coflag")
-    print("  yapmayacak en yuksek deger. Host-incoherence (arsiv) dogal es-sinyal adayi.")
+    print("  READING: with no co-signal (s2=0) every CAP allows (NO over-defense).")
+    print("  With a co-signal of 0.6-0.7, provenance shifts the decision to flag/BLOCK")
+    print("  - that is the benefit. Calibration: s2>=0.3 is rare on benign content")
+    print("  (see above), so the back-door risk is low; CAP_PROV should be the highest")
+    print("  value that carries a REAL attack with a co-signal to block without")
+    print("  co-flagging benign content. Host incoherence (archived) is the natural")
+    print("  co-signal candidate.")
     print("=" * 74)
 
 

@@ -1,11 +1,12 @@
-"""Daha iyi (daha cesitli) deployment modeli:  python eval/build_best.py
+"""A better (more diverse) deployment model:  python eval/build_best.py
 
-3 gercek seti birlestirir (deepset+jackhhao + xTRam1 ~5900), train/val/test,
-embedding cache, SoftDecisionTree + LogReg egitir, held-out raporlar, ve EN IYI
-modeli web icin kaydeder (reasongate/models/, esik VAL'de recall>=%95).
+Combines 3 real sets (deepset+jackhhao + xTRam1, ~5900), splits train/val/test,
+caches embeddings, trains SoftDecisionTree + LogReg, reports held-out numbers and
+saves the BEST model for the web demo (reasongate/models/, threshold from VAL at
+recall>=95%).
 
-Not: bu model artik xTRam1'i de gordu -> 0.882 OOD sayisi ESKI model icindi;
-yeni modelin gercek OOD'si icin 4. bir taze set gerekir (sonraki adim).
+Honest note: this model has now SEEN xTRam1, so the 0.882 OOD figure belongs to
+the OLDER model; a genuine OOD number for this one needs a fourth, fresh set.
 """
 import hashlib
 import json
@@ -15,6 +16,7 @@ import warnings
 
 warnings.filterwarnings("ignore")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from eval._addon import require_addon
 
 import numpy as np
 from eval import metrics
@@ -52,6 +54,7 @@ def tune(scores, y, target=TARGET_RECALL):
 
 
 def main():
+    require_addon()  # the trained model moved to the enterprise add-on in 0.2.0
     raw = json.load(open(POOL, encoding="utf-8")) + json.load(open(OOD, encoding="utf-8"))
     seen, data = set(), []
     for t, l in raw:
@@ -59,7 +62,7 @@ def main():
         if k not in seen:
             seen.add(k); data.append([t, int(l)])
     texts = [t for t, _ in data]; y = np.array([l for _, l in data])
-    print(f"Birlesik havuz: {len(data)} | saldiri={int(y.sum())} iyi={int((y==0).sum())}")
+    print(f"Combined pool: {len(data)} | attacks={int(y.sum())} benign={int((y==0).sum())}")
 
     E = get_E(texts)
     from sklearn.model_selection import train_test_split
@@ -78,10 +81,10 @@ def main():
         thh = tune(mdl.predict_proba(E[va])[:, 1], y[va])
         pred = (mdl.predict_proba(E[te])[:, 1] >= thh).astype(int)
         m = metrics.report(list(y[te]), list(pred))
-        print(f"\n=== {name} (held-out, esik {thh:.3f}) ===")
+        print(f"\n=== {name} (held-out, threshold {thh:.3f}) ===")
         print(metrics.pretty(m))
 
-    # EN IYI = soft tree; web icin kaydet
+    # BEST = the soft tree; save it for the web demo
     th_best = tune(soft.predict_proba(E[va])[:, 1], y[va])
     atk = [i for i in tr if y[i] == 1][:400]
     import joblib
@@ -92,7 +95,7 @@ def main():
               open(os.path.join(MODELS, "meta.json"), "w"))
     np.savez(os.path.join(MODELS, "attack_bank.npz"),
              emb=E[atk], texts=np.array([texts[i] for i in atk], dtype=object))
-    print(f"\nWEB MODELI GUNCELLENDI -> {MODELS} (esik {th_best:.3f}, egitim {len(tr)})")
+    print(f"\nWEB MODEL UPDATED -> {MODELS} (threshold {th_best:.3f}, train {len(tr)})")
 
 
 if __name__ == "__main__":

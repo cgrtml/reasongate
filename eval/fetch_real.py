@@ -1,10 +1,10 @@
-"""Gercek injection verisini ceker (deepset/prompt-injections), yerele kaydeder.
+"""Fetches the real injection data (deepset/prompt-injections) and saves it locally.
 
   python eval/fetch_real.py
 
-HuggingFace datasets-server API (stdlib urllib, ek bagimlilik yok).
-Kayit: eval/data/real.json  {"train":[[text,label],...], "test":[...]}
-Veri gitignore'da (commit edilmez).
+HuggingFace datasets-server API (stdlib urllib, no extra dependency).
+Output: eval/data/real.json  {"train":[[text,label],...], "test":[...]}
+The data is gitignored (never committed).
 """
 import json
 import os
@@ -43,13 +43,13 @@ def main():
             rows = fetch_split(split)
             data[split] = rows
             n1 = sum(l for _, l in rows)
-            print(f"{split}: {len(rows)} ornek | injection={n1} iyi-huylu={len(rows)-n1}")
+            print(f"{split}: {len(rows)} samples | injection={n1} benign={len(rows)-n1}")
         except Exception as e:
-            print(f"{split}: HATA {e}")
+            print(f"{split}: ERROR {e}")
             data[split] = []
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False)
-    print(f"Kaydedildi: {OUT}")
+    print(f"Saved: {OUT}")
 
 
 if __name__ == "__main__":

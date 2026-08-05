@@ -1,8 +1,9 @@
-"""Bagimsiz OOD seti ceker (xTRam1/safe-guard-prompt-injection).
+"""Fetches an independent OOD set (xTRam1/safe-guard-prompt-injection).
    python eval/fetch_ood.py
 
-Bu set EGITIMDE KULLANILMADI -> gercek genelleme (OOD) testi icin. 429'a dayanikli.
-Kayit: eval/data/ood.json  [[text, label], ...]   (cap: dengeli ~4000)
+This set was NOT USED IN TRAINING -> it is the real generalization (OOD) test.
+Resilient to HTTP 429.
+Output: eval/data/ood.json  [[text, label], ...]   (cap: balanced ~4000)
 """
 import json
 import os
@@ -23,7 +24,7 @@ def _get(url, tries=6):
         except urllib.error.HTTPError as e:
             if e.code == 429 and i < tries - 1:
                 wait = 5 * (i + 1)
-                print(f"  429, {wait}s bekleniyor...")
+                print(f"  429, waiting {wait}s...")
                 time.sleep(wait)
             else:
                 raise
@@ -61,9 +62,9 @@ def main():
         if k not in seen:
             seen.add(k); dd.append([t, l])
     n1 = sum(l for _, l in dd)
-    print(f"OOD set: {len(dd)} | saldiri={n1} iyi={len(dd)-n1}")
+    print(f"OOD set: {len(dd)} | attacks={n1} benign={len(dd)-n1}")
     json.dump(dd, open(OUT, "w", encoding="utf-8"), ensure_ascii=False)
-    print("Kaydedildi:", OUT)
+    print("Saved:", OUT)
 
 
 if __name__ == "__main__":

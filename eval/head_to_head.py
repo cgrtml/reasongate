@@ -1,11 +1,11 @@
-"""Kafa-kafaya: ReasonGate vs ProtectAI deberta-v3 — NOTR public setlerde.
+"""Head to head: ReasonGate vs ProtectAI deberta-v3 - on NEUTRAL public sets.
 
-Adil zemin: iki taraf da bu setleri egitimde gormedi (varsayim; deberta'nin
-egitim seti acik degil — not dusuyoruz). Ayni ornekler, ayni metrikler.
+Fair ground: neither side saw these sets in training (an assumption; deberta's
+training set is undisclosed - we note that). Same samples, same metrics.
 
-  - Recall  @ Lakera/gandalf (112 atak, notr)
-  - FPR     @ NotInject       (339 benign, over-defense ekseni)
-  - Latency (prompt basina, CPU)
+  - Recall  @ Lakera/gandalf (112 attacks, neutral)
+  - FPR     @ NotInject      (339 benign, the over-defense axis)
+  - Latency (per prompt, CPU)
 
   python eval/head_to_head.py
 """
@@ -19,6 +19,7 @@ warnings.filterwarnings("ignore")
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from eval._addon import require_addon
 from reasongate.shield import Shield
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -27,10 +28,11 @@ MODELS = os.path.join(os.path.dirname(HERE), "reasongate", "models")
 
 
 def main():
-    # --- veriler ---
+    require_addon()  # the trained model moved to the enterprise add-on in 0.2.0
+    # --- data ---
     attacks = [r for r in json.load(open(os.path.join(DATA, "gandalf_attacks.json")))] \
         if os.path.exists(os.path.join(DATA, "gandalf_attacks.json")) else None
-    # gandalf'i ML benchmark cache'inden degil, ham metinden al
+    # take gandalf from the raw text, not from the ML benchmark cache
     import urllib.request
     if attacks is None:
         attacks, off = [], 0
@@ -45,9 +47,9 @@ def main():
         json.dump(attacks, open(os.path.join(DATA, "gandalf_attacks.json"), "w"))
     benign = [r["prompt"] for r in json.load(open(os.path.join(DATA, "notinject.json")))]
 
-    print(f"Veri: {len(attacks)} atak (gandalf) + {len(benign)} benign (NotInject)\n")
+    print(f"Data: {len(attacks)} attacks (gandalf) + {len(benign)} benign (NotInject)\n")
 
-    rows = []  # (isim, recall, fpr, ms/prompt)
+    rows = []  # (name, recall, fpr, ms/prompt)
 
     # --- ReasonGate core (offline) ---
     sh = Shield()
@@ -57,7 +59,7 @@ def main():
     ms = 1000 * (time.time() - t0) / (len(attacks) + len(benign))
     rows.append(("ReasonGate core (offline)", r, f, ms))
 
-    # --- ReasonGate + ML (cache'li embedding) ---
+    # --- ReasonGate + ML (cached embeddings) ---
     try:
         import joblib, hashlib
         from reasongate import embeddings
@@ -78,7 +80,7 @@ def main():
         f2 = np.mean(model.predict_proba(be)[:, 1] >= th) * 100
         rows.append(("ReasonGate + ML (VoyageAI→soft tree)", r2, f2, None))
     except Exception as e:
-        print(f"[ML atlandi: {e}]")
+        print(f"[ML skipped: {e}]")
 
     # --- ProtectAI deberta-v3 ---
     try:
@@ -95,9 +97,9 @@ def main():
         ms3 = 1000 * (time.time() - t0) / (len(attacks) + len(benign))
         rows.append(("ProtectAI deberta-v3", r3, f3, ms3))
     except Exception as e:
-        print(f"[ProtectAI atlandi: {e}]")
+        print(f"[ProtectAI skipped: {e}]")
 
-    # --- tablo ---
+    # --- table ---
     print("=" * 72)
     print(f"{'Guard':38} | {'Recall↑':>8} | {'FPR↓':>7} | {'ms/prompt':>9}")
     print("-" * 72)
@@ -105,7 +107,7 @@ def main():
         msx = f"{ms:.2f}" if ms is not None else "  (ML)"
         print(f"{name:38} | {r:6.1f}% | {f:5.1f}% | {msx:>9}")
     print("=" * 72)
-    print("Recall @ gandalf (notr atak) · FPR @ NotInject (over-defense) · CPU latency")
+    print("Recall @ gandalf (neutral attacks) - FPR @ NotInject (over-defense) - CPU latency")
 
     print("\n--- markdown ---")
     print("| Guard | Recall @ gandalf | FPR @ NotInject | ms/prompt |")

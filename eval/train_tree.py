@@ -1,10 +1,11 @@
-"""Adim B:  python eval/train_tree.py
+"""Model comparison:  python eval/train_tree.py
 
-Soft Decision Tree (neural-trees, Cagri'nin IP'si) vs sklearn DecisionTree vs
-ML-baseline. Ozellikler: kural skoru + ML benzerligi + metin ozellikleri.
+Soft Decision Tree (neural-trees) vs sklearn DecisionTree vs the ML baseline.
+Features: rule score + ML similarity + text features.
 
-Rigor: train/test ayrimi (leakage yok) + neural-trees'in combined_5x2cv_f_test
-ve mcnemar_test'i ile istatistiksel karsilastirma. Aciklanabilirlik: karar kurallari.
+Rigor: a train/test split (no leakage) plus statistical comparison via
+neural-trees' combined_5x2cv_f_test and mcnemar_test. Explainability: the
+resulting decision rules are printed.
 """
 import os
 import sys
@@ -18,6 +19,9 @@ import numpy as np
 from eval import dataset, metrics
 from reasongate import embeddings as emb
 from reasongate.features import build_features, FEATURE_NAMES
+from eval._addon import require_addon
+require_addon()  # the ML detector moved to the enterprise add-on in 0.2.0
+
 from reasongate.detectors.ml_injection import REFERENCE_ATTACKS
 
 
@@ -40,7 +44,7 @@ def main():
     prompts = [p for p, _ in data]
     y = np.array([lbl for _, lbl in data], dtype=int)
 
-    print(f"Embedding + ozellik cikarimi ({len(prompts)} prompt)...")
+    print(f"Embedding + feature extraction ({len(prompts)} prompts)...")
     ml = _ml_scores(prompts)
     X = build_features(prompts, ml)
     ml = np.array(ml)
@@ -53,7 +57,7 @@ def main():
     Xtr, Xte, ytr, yte, mltr, mlte = train_test_split(
         X, y, ml, test_size=0.3, stratify=y, random_state=42)
 
-    # --- modeller ---
+    # --- models ---
     soft = SoftDecisionTree(depth=3, max_epochs=30, learning_rate=0.05, verbose=False)
     soft.fit(Xtr, ytr)
     pred_soft = np.array(soft.predict(Xte)).astype(int).ravel()
@@ -62,38 +66,38 @@ def main():
     skt.fit(Xtr, ytr)
     pred_skt = skt.predict(Xte).astype(int)
 
-    pred_ml = (mlte >= 0.60).astype(int)   # Adim 2 ML-baseline (test dilimi)
+    pred_ml = (mlte >= 0.60).astype(int)   # the ML baseline (test slice)
 
-    # --- held-out metrikler ---
-    print("\n################  HELD-OUT TEST METRIKLERI  ################")
+    # --- held-out metrics ---
+    print("\n################  HELD-OUT TEST METRICS  ################")
     _report("ML-baseline (embedding @0.60)", yte, pred_ml)
-    _report("sklearn DecisionTree (2)", yte, pred_skt)
-    _report("SoftDecisionTree / neural-trees (1)  ⭐", yte, pred_soft)
+    _report("sklearn DecisionTree", yte, pred_skt)
+    _report("SoftDecisionTree / neural-trees", yte, pred_soft)
 
     # --- McNemar: soft vs sklearn (test) ---
-    print("\n################  ISTATISTIKSEL KARSILASTIRMA  ################")
+    print("\n################  STATISTICAL COMPARISON  ################")
     try:
         mc = mcnemar_test(yte, pred_soft, pred_skt)
         print(f"McNemar (soft vs sklearn, held-out): {mc}")
     except Exception as e:
-        print(f"McNemar hata: {e}")
+        print(f"McNemar error: {e}")
 
-    # --- 5x2cv F-test: soft vs sklearn (tum veri, 10 refit) ---
+    # --- 5x2cv F-test: soft vs sklearn (all data, 10 refits) ---
     try:
-        print("\n5x2cv F-test kosuluyor (soft vs sklearn, 10 refit — biraz surebilir)...")
+        print("\nRunning the 5x2cv F-test (soft vs sklearn, 10 refits - this takes a while)...")
         f = combined_5x2cv_f_test(
             SoftDecisionTree(depth=3, max_epochs=20, learning_rate=0.05, verbose=False),
             DecisionTreeClassifier(max_depth=3, random_state=42),
             X, y, random_state=42)
-        print(f"5x2cv F-test sonucu: {f}")
+        print(f"5x2cv F-test result: {f}")
     except Exception as e:
-        print(f"5x2cv hata: {e}")
+        print(f"5x2cv error: {e}")
 
-    # --- ACIKLANABILIRLIK ---
-    print("\n################  ACIKLANABILIRLIK  ################")
-    print("\n[sklearn ağacı — insan-okunur kurallar]")
+    # --- EXPLAINABILITY ---
+    print("\n################  EXPLAINABILITY  ################")
+    print("\n[sklearn tree - human-readable rules]")
     print(export_text(skt, feature_names=list(FEATURE_NAMES)))
-    print("[SoftDecisionTree — ozellik onemi / split agirliklari]")
+    print("[SoftDecisionTree - feature importance / split weights]")
     try:
         sw = soft.get_split_weights()
         sw = np.abs(np.asarray(sw))
@@ -102,7 +106,7 @@ def main():
             for name, v in sorted(zip(FEATURE_NAMES, imp), key=lambda t: -t[1]):
                 print(f"  {name:14s}: {v:.3f}")
         else:
-            print("  split agirliklari sekli:", sw.shape)
+            print("  split-weight shape:", sw.shape)
     except Exception as e:
         print(f"  (soft tree introspection: {e})")
 

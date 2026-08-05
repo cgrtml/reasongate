@@ -1,21 +1,25 @@
-"""ROC/PR + durust esik recalibrasyonu (ML over-defense teshisi).
+"""ROC/PR + honest threshold recalibration (the ML over-defense diagnosis).
 
-Sorun: ML dedektoru recall-first esikte (0.8395) NotInject'te %23 FPR veriyor —
-wedge'i (dusuk over-defense) iceriden deliyor. Bu script:
+The problem: at the recall-first threshold (0.8395) the ML detector gives 23% FPR
+on NotInject - it punctures the low-over-defense wedge from the inside. This script:
 
-  1) soft tree skorlari uzerinden TAM ROC/PR egrisi (paper figuru),
-  2) FPR hedeflerinde operating point'ler (recall ne kadar feda ediliyor),
-  3) DURUST esik secimi: calibration yarisinda sec, HELD-OUT yarida raporla
-     (ayni sette secip raporlamak = benchmark'a overfit),
-  4) Teshis: sorun sadece esik mi (iyi diz noktasi) yoksa retrain mi gerek.
+  1) the FULL ROC/PR curve over the soft-tree scores (the paper figure),
+  2) operating points at FPR targets (how much recall is sacrificed),
+  3) HONEST threshold selection: choose on a calibration half, report on the
+     HELD-OUT half (choosing and reporting on the same set = overfitting the
+     benchmark),
+  4) Diagnosis: is this only a threshold problem (a good knee) or is a retrain needed.
 
-Veri: gandalf (atak=1) + NotInject (benign=0), embedding cache'inden (API yok).
+Data: gandalf (attack=1) + NotInject (benign=0), from the embedding cache (no API).
   python eval/recalibrate.py
-Cikti: operating-point tablosu + figur _notes/roc_reasongate.png
+Output: the operating-point table + the figure _notes/roc_reasongate.png
 """
 import json
 import os
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from eval._addon import require_addon
 
 import numpy as np
 
@@ -36,6 +40,7 @@ def _load_emb(name):
 
 
 def main():
+    require_addon()  # the trained model moved to the enterprise add-on in 0.2.0
     import joblib
     model = joblib.load(os.path.join(MODELS, "soft_tree.joblib"))
     cur_th = float(json.load(open(os.path.join(MODELS, "meta.json")))["threshold"])
@@ -58,30 +63,30 @@ def main():
         return r, f
 
     def thr_for_fpr(target):
-        """Calibration kullanmadan: FPR<=target iken max recall veren esik."""
+        """Without a calibration split: the threshold maximizing recall at FPR<=target."""
         ok = np.where(fpr <= target)[0]
         i = ok[np.argmax(tpr[ok])]
         return thr[i], 100 * tpr[i], 100 * fpr[i]
 
     print("=" * 66)
-    print("ROC / PR TESHISI — soft tree skorlari (gandalf atak + NotInject benign)")
+    print("ROC / PR DIAGNOSIS - soft-tree scores (gandalf attacks + NotInject benign)")
     print("=" * 66)
     print(f"ROC-AUC = {roc_auc:.3f}   |   PR-AUC (AP) = {ap:.3f}   "
           f"(pos={int(y.sum())}, neg={int((y==0).sum())})")
 
-    print("\n--- Operating point'ler (tum sette, tanimlayici) ---")
+    print("\n--- Operating points (whole set, descriptive) ---")
     r0, f0 = at_threshold(cur_th)
-    print(f"  Mevcut esik {cur_th:.3f} (recall-first): recall %{r0:.1f}  FPR %{f0:.1f}")
+    print(f"  Current threshold {cur_th:.3f} (recall-first): recall {r0:.1f}%  FPR {f0:.1f}%")
     for tgt in (0.05, 0.08, 0.10):
         t, r, f = thr_for_fpr(tgt)
-        print(f"  FPR<=%{int(tgt*100):<2} hedefi -> esik {t:.3f}: recall %{r:.1f}  FPR %{f:.1f}")
+        print(f"  target FPR<={int(tgt*100):<2}% -> threshold {t:.3f}: recall {r:.1f}%  FPR {f:.1f}%")
     # knee: max Youden J
     j = tpr - fpr
     ij = int(np.argmax(j))
-    print(f"  Knee (max Youden J) esik {thr[ij]:.3f}: recall %{100*tpr[ij]:.1f}  FPR %{100*fpr[ij]:.1f}")
+    print(f"  Knee (max Youden J) threshold {thr[ij]:.3f}: recall {100*tpr[ij]:.1f}%  FPR {100*fpr[ij]:.1f}%")
 
-    # --- DURUST secim: calibration/test split ---
-    print("\n--- Durust recalibrasyon (calibration'da sec, HELD-OUT'ta raporla) ---")
+    # --- HONEST selection: calibration/test split ---
+    print("\n--- Honest recalibration (choose on calibration, report on HELD-OUT) ---")
     idx = np.arange(len(y))
     cal, test = train_test_split(idx, test_size=0.5, stratify=y, random_state=42)
     fpr_c, tpr_c, thr_c = roc_curve(y[cal], scores[cal])
@@ -91,20 +96,20 @@ def main():
     pred_t = scores[test] >= chosen
     r_test = 100 * np.mean(pred_t[y[test] == 1])
     f_test = 100 * np.mean(pred_t[y[test] == 0])
-    print(f"  Calibration'da FPR<=%8 icin secilen esik: {chosen:.3f}")
-    print(f"  HELD-OUT test: recall %{r_test:.1f}  FPR %{f_test:.1f}  "
-          f"(mevcut 0.84 esikte ayni testte: recall %{at_threshold(cur_th)[0]:.1f} FPR %{at_threshold(cur_th)[1]:.1f})")
+    print(f"  Threshold chosen on calibration for FPR<=8%: {chosen:.3f}")
+    print(f"  HELD-OUT test: recall {r_test:.1f}%  FPR {f_test:.1f}%  "
+          f"(same test at the shipped 0.84 threshold: recall {at_threshold(cur_th)[0]:.1f}% FPR {at_threshold(cur_th)[1]:.1f}%)")
 
-    # --- teshis ---
+    # --- diagnosis ---
     _, f_at_knee = at_threshold(thr[ij])
-    print("\n--- TESHIS ---")
+    print("\n--- DIAGNOSIS ---")
     if f_test <= 10:
-        print(f"  Esik tek basina FPR'i %{f_test:.1f}'e cekiyor -> kismen esik sorunu.")
-    print(f"  Ama knee'de bile FPR %{100*fpr[ij]:.1f}; ROC-AUC {roc_auc:.3f}. "
-          f"AUC<0.97 ise hard-negative RETRAIN kaliciliği icin gerekli "
-          f"(NotInject-tarzi adversarial-benign'leri model hic gormedi).")
+        print(f"  The threshold alone brings FPR to {f_test:.1f}% -> partly a threshold problem.")
+    print(f"  But even at the knee FPR is {100*fpr[ij]:.1f}%; ROC-AUC {roc_auc:.3f}. "
+          f"If AUC<0.97, a hard-negative RETRAIN is needed for a durable fix "
+          f"(the model never saw NotInject-style adversarial benign text).")
 
-    # --- figur ---
+    # --- figure ---
     fig, ax = plt.subplots(1, 2, figsize=(11, 4.5))
     ax[0].plot(fpr, tpr, lw=2, label=f"ReasonGate ML (AUC={roc_auc:.3f})")
     ax[0].plot([0, 1], [0, 1], "--", c="gray", lw=1)
@@ -118,7 +123,7 @@ def main():
     fig.suptitle("ReasonGate ML detector — operating characteristic", fontweight="bold")
     fig.tight_layout()
     fig.savefig(FIG, dpi=130)
-    print(f"\nFigur kaydedildi: {FIG}")
+    print(f"\nFigure saved: {FIG}")
 
 
 if __name__ == "__main__":

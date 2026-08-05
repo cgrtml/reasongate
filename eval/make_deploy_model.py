@@ -1,8 +1,9 @@
-"""Hafif deployment modeli (LogReg, torch'suz) uretir + repo'ya koyar.
+"""Builds a lightweight deployment model (LogReg, no torch) and puts it in the repo.
    python eval/make_deploy_model.py
 
-Sunucuda torch/neural-trees gerekmesin diye soft tree yerine LogReg. app/model/
-altina kaydeder (commit edilir; gitignore'daki 'models/' bunu kapsamaz -> 'model' tekil).
+LogReg instead of the soft tree so the server does not need torch/neural-trees.
+Saved under app/model/ (committed; the gitignored 'models/' pattern does not cover
+it - note the singular 'model').
 """
 import hashlib
 import json
@@ -20,7 +21,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 POOL = os.path.join(HERE, "data", "pool.json")
 OOD = os.path.join(HERE, "data", "ood.json")
-CACHE = os.path.join(HERE, "data", "best_emb_cache.npz")   # build_best ile ayni anahtar
+CACHE = os.path.join(HERE, "data", "best_emb_cache.npz")   # same cache key as build_best
 OUT = os.path.join(ROOT, "app", "model")
 TARGET_RECALL = 0.95
 
@@ -67,7 +68,7 @@ def main():
     np.savez(os.path.join(OUT, "attack_bank.npz"),
              emb=E[atk], texts=np.array([texts[i] for i in atk], dtype=object))
     size = sum(os.path.getsize(os.path.join(OUT, f)) for f in os.listdir(OUT))
-    print(f"Deploy modeli -> {OUT} (esik {th:.3f}, ~{size/1e6:.1f}MB)")
+    print(f"Deployment model -> {OUT} (threshold {th:.3f}, ~{size/1e6:.1f}MB)")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,9 @@
-"""Teshis #17 — de-konfaund probe: 0.96'lik (a) gercek 'injection-ozu' mu,
-yoksa KONU-ayrimi mi? Pozitifleri aile-2 / aile-1-kalinti diye ayirip
-ICERIK-eslesmeli negatife (notinject — ayni dilbilimsel siniftan masum
-gorev/teknik istekleri) karsi koyar. Headline'i tek satira gommeden once.
+"""Diagnostic #17 - the de-confounding probe: is the 0.96 separability of (a) real
+"injection essence", or merely TOPIC separation? It splits the positives into
+family-2 / family-1-residue and pits them against a CONTENT-MATCHED negative set
+(NotInject - innocent task/technical requests from the same linguistic class).
+
+Run this before letting a headline number stand on one line.
 """
 import json
 import os
@@ -37,26 +39,26 @@ def main():
     Eni = d.embed(ni, "document")
 
     print("=" * 70)
-    print("PROBE — (a)'yi ICERIK-eslesmeli negatife karsi DE-KONFAUND")
-    print(f"  pozitif: aile-2={len(f2)}  aile-1-kalinti={len(f1)}")
-    print("  notinject = ayni siniftan masum gorev/teknik istekleri (asil zor-neg)")
+    print("PROBE - de-confounding (a) against a CONTENT-MATCHED negative set")
+    print(f"  positives: family-2={len(f2)}  family-1-residue={len(f1)}")
+    print("  notinject = innocent task/technical requests from the same class (the real hard negative)")
     print("=" * 70)
     rows = [
-        ("aile-2  vs notinject (ICERIK-eslesmeli)", Ef2, Eni),
-        ("aile-2  vs clean_hardneg (Python how-to)", Ef2, Echn),
-        ("aile-2  vs recipes (uzun, alakasiz konu)", Ef2, Erec),
-        ("aile-1  vs notinject (ICERIK-eslesmeli)", Ef1, Eni),
-        ("aile-1  vs recipes (uzun, alakasiz konu)", Ef1, Erec),
-        ("TUM-50  vs notinject (ICERIK-eslesmeli)", np.vstack([Ef2, Ef1]), Eni),
+        ("family-2 vs notinject (CONTENT-MATCHED)", Ef2, Eni),
+        ("family-2 vs clean_hardneg (Python how-to)", Ef2, Echn),
+        ("family-2 vs recipes (long, unrelated topic)", Ef2, Erec),
+        ("family-1 vs notinject (CONTENT-MATCHED)", Ef1, Eni),
+        ("family-1 vs recipes (long, unrelated topic)", Ef1, Erec),
+        ("ALL-50   vs notinject (CONTENT-MATCHED)", np.vstack([Ef2, Ef1]), Eni),
     ]
     for name, P, N in rows:
         print(d.fmt(name, d.lr_oof(P, N)))
     print("=" * 70)
-    print("OKUMA: aile-2-vs-notinject COKERSE -> 0.96 KONU-ayrimiydi, injection-ozu")
-    print("DEGIL. Ayni dilbilimsel sinifta family-2 metin-seviyesinde ayrilamaz;")
-    print("'app-layer provenance sart' olcumle desteklenir.")
-    print("Aile-1 yuksek kalirsa: pattern-residue'nun lurid konulari (scam/cipher)")
-    print("ayriliyor — ama o zaten saldiri-ozu degil konu; build'i yaniltir.")
+    print("READING: if family-2-vs-notinject COLLAPSES, the 0.96 was TOPIC separation, not")
+    print("injection essence. Within the same linguistic class, family-2 is not separable at")
+    print("the text level - which is the measurement backing 'app-layer provenance is required'.")
+    print("If family-1 stays high, what separates is the lurid topics of the pattern residue")
+    print("(scam/cipher) - still topic, not attack essence, and it would mislead the build.")
 
 
 if __name__ == "__main__":

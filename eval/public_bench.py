@@ -1,14 +1,14 @@
-"""Bagimsiz public benchmark: over-defense (yanlis-pozitif) olcumu.
+"""Independent public benchmark: the over-defense (false-positive) measurement.
 
-NotInject (leolee99/NotInject) — 339 BENIGN prompt, hepsi injection trigger
-kelimeleri ("ignore", "system", "bypass"...) iceriyor ama zararsiz. Iyi bir
-guard bunlari BLOKLAMAMALI. Herhangi bir blok = over-defense (yanlis pozitif).
+NotInject (leolee99/NotInject) — 339 BENIGN prompts, every one seeded with
+injection trigger words ("ignore", "system", "bypass"...) while being harmless.
+A good guard must NOT block these. Any block = over-defense (a false positive).
 
-Bu, ReasonGate cekirdek katmanini (kural + normalizasyon) BAGIMSIZ bir
-public sette test eder — ic test setimizle ilgisi yok. Tamamen offline
-(embedding/API gerekmez), cunku sadece "bloklamadi mi" olcuyoruz.
+This tests the ReasonGate core layer (rule + normalization) on an INDEPENDENT
+public set — nothing to do with our own test set. Fully offline (no embedding or
+API needed), because all we measure is "did it block".
 
-  python eval/public_bench.py        # cached varsa kullan, yoksa cek
+  python eval/public_bench.py        # use the cache if present, otherwise fetch
   python eval/public_bench.py --refetch
 """
 import json
@@ -57,17 +57,17 @@ def fetch():
 def load():
     if os.path.exists(DATA) and "--refetch" not in sys.argv:
         return json.load(open(DATA, encoding="utf-8"))
-    print("NotInject cekiliyor (leolee99/NotInject)...")
+    print("Fetching NotInject (leolee99/NotInject)...")
     rows = fetch()
-    print(f"  {len(rows)} benign prompt kaydedildi.")
+    print(f"  saved {len(rows)} benign prompts.")
     return rows
 
 
 def main():
     rows = load()
-    shield = Shield()   # cekirdek: InjectionDetector + NormalizationDetector
+    shield = Shield()   # the core: InjectionDetector + NormalizationDetector
 
-    by_split = defaultdict(lambda: [0, 0])      # [blok, toplam]
+    by_split = defaultdict(lambda: [0, 0])      # [blocked, total]
     by_cat = defaultdict(lambda: [0, 0])
     blocked, flagged, total = 0, 0, len(rows)
     examples = []
@@ -87,34 +87,34 @@ def main():
                 examples.append((r["prompt"][:70], res.detections))
 
     print("=" * 64)
-    print("NotInject — OVER-DEFENSE (yanlis-pozitif) BENCHMARK")
-    print(f"339 benign prompt, hepsi injection trigger kelimeli (bagimsiz public set)")
+    print("NotInject - OVER-DEFENSE (false-positive) BENCHMARK")
+    print(f"339 benign prompts, every one trigger-word laden (independent public set)")
     print("=" * 64)
     fpr = 100 * blocked / total
-    print(f"\nGENEL: blok {blocked}/{total} = %{fpr:.1f} yanlis-pozitif"
-          f"  (+ {flagged} flag = %{100*flagged/total:.1f})")
-    print(f"Dogru-gecirme (benign accuracy): %{100*(total-blocked)/total:.1f}")
+    print(f"\nOVERALL: blocked {blocked}/{total} = {fpr:.1f}% false positives"
+          f"  (+ {flagged} flagged = {100*flagged/total:.1f}%)")
+    print(f"Correctly passed (benign accuracy): {100*(total-blocked)/total:.1f}%")
 
-    print("\n--- Trigger sayisina gore (zorluk artar) ---")
+    print("\n--- By trigger count (difficulty increases) ---")
     for s in SPLITS:
         b, t = by_split[s]
-        print(f"  {s:18}: blok %{100*b/t:.1f}  ({b}/{t})")
+        print(f"  {s:18}: blocked {100*b/t:.1f}%  ({b}/{t})")
 
-    print("\n--- Kategoriye gore (Multilingual = dil kapsami testi) ---")
+    print("\n--- By category (Multilingual = language-coverage test) ---")
     for cat, (b, t) in sorted(by_cat.items()):
-        print(f"  {cat:22}: blok %{100*b/t:.1f}  ({b}/{t})")
+        print(f"  {cat:22}: blocked {100*b/t:.1f}%  ({b}/{t})")
 
     if examples:
-        print("\n--- Yanlis bloklanan ornekler (over-defense) ---")
+        print("\n--- Wrongly blocked examples (over-defense) ---")
         for txt, dets in examples[:5]:
             trig = next((d for d in dets if d.triggered), None)
             why = trig.reason if trig else "?"
             print(f"  ✗ \"{txt}\"  -> {why}")
 
-    print("\n--- README/preprint icin markdown ---")
+    print("\n--- markdown for README/preprint ---")
     print("| Guard | NotInject FPR ↓ | Benign accuracy ↑ |")
     print("|---|---:|---:|")
-    print(f"| ReasonGate (core, offline) | %{fpr:.1f} | %{100*(total-blocked)/total:.1f} |")
+    print(f"| ReasonGate (core, offline) | {fpr:.1f}% | {100*(total-blocked)/total:.1f}% |")
 
 
 if __name__ == "__main__":

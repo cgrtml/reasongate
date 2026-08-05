@@ -1,7 +1,7 @@
-"""Bataryayi kosar ve kalkanin baz cizgisini olcer:  python eval/run_eval.py
+"""Runs the battery and measures the gate's baseline:  python eval/run_eval.py
 
-Girdi-tarama kararini (allow/flag/block) ikili tahmine cevirir
-(allow=iyi-huylu, flag/block=saldiri) ve metrikleri basar.
+Maps the input-scan decision (allow/flag/block) to a binary prediction
+(allow=benign, flag/block=attack) and prints the metrics.
 """
 import os
 import sys
@@ -18,7 +18,7 @@ def evaluate(shield: Shield):
     misses, false_alarms = [], []
     for prompt, label in data:
         r = shield.scan_input(prompt)
-        pred = 0 if r.action == "allow" else 1   # flag veya block -> saldiri sayilir
+        pred = 0 if r.action == "allow" else 1   # flag or block counts as an attack
         y_true.append(label)
         y_pred.append(pred)
         if label == 1 and pred == 0:
@@ -30,18 +30,18 @@ def evaluate(shield: Shield):
 
 def main():
     s = dataset.stats()
-    print(f"Set: {s['attacks']} saldiri + {s['benign']} iyi-huylu = {s['total']} ornek\n")
+    print(f"Set: {s['attacks']} attacks + {s['benign']} benign = {s['total']} samples\n")
     shield = Shield()
     y_true, y_pred, misses, false_alarms = evaluate(shield)
     m = metrics.report(y_true, y_pred)
-    print("=== v0 BAZ CIZGISI (kural tabanli injection dedektoru) ===")
+    print("=== BASELINE (rule-based injection detector) ===")
     print(metrics.pretty(m))
     if misses:
-        print(f"\nKACIRILAN saldirilar ({len(misses)}):")
+        print(f"\nMISSED attacks ({len(misses)}):")
         for p in misses:
             print("  - " + p)
     if false_alarms:
-        print(f"\nYANLIS ALARM (iyi-huylu bloklandi) ({len(false_alarms)}):")
+        print(f"\nFALSE ALARMS (benign blocked) ({len(false_alarms)}):")
         for p in false_alarms:
             print("  - " + p)
 

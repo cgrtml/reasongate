@@ -1,15 +1,17 @@
-"""Benign-instructional FPR seti — indirect over-defense'in NotInject karsiligi.
+"""Benign-instructional FPR set - the indirect-injection counterpart of NotInject.
 
-Mesru RAG/dokuman icerigi imperatif DOLUDUR: tarifler ("un ekle"), kilavuzlar
-("dugmeye bas"), tutorial'lar ("su fonksiyonu yaz"). Bunlar injection DEGIL —
-imperatif, icerigin KENDI konusu, asistanin ciktisina yonelik degil.
+Legitimate RAG/document content is FULL of imperatives: recipes ("add the flour"),
+manuals ("press the button"), tutorials ("write this function"). None of these are
+injection - the imperative is about the content's OWN subject, not aimed at the
+assistant's output.
 
-Indirect dedektorune meta-direktif kalibi eklerken bu set FPR'i olcer: kaliplar
-mesru imperatif icerigi over-block ETMEMELI (yoksa wedge geri yanar).
+When adding meta-directive patterns to the indirect detector, this set measures the
+FPR cost: the patterns must NOT over-block legitimate imperative content, or the
+over-defense wedge burns.
 
-Kaynaklar (hepsi mesru, imperatif-yogun):
-  - corbt/all-recipes (tarif yonergeleri)
-  - tatsu-lab/alpaca (how-to / adim-adim instruction ciktilari)
+Sources (all legitimate, imperative-heavy):
+  - corbt/all-recipes (recipe directions)
+  - tatsu-lab/alpaca (how-to / step-by-step instruction outputs)
 
   python eval/build_benign_instructional.py   -> eval/data/benign_instructional.json
 """
@@ -43,7 +45,7 @@ def fetch_recipes(n=200):
 
 
 def fetch_alpaca_howto(n=200):
-    """How-to instruction'larin imperatif ciktilari (adim-adim mesru prosedurler)."""
+    """Imperative outputs of how-to instructions (legitimate step-by-step procedures)."""
     out, off, scanned = [], 0, 0
     while len(out) < n and scanned < 6000:
         u = ("https://datasets-server.huggingface.co/rows?dataset=tatsu-lab/alpaca"
@@ -67,12 +69,12 @@ def main():
     data = [{"text": t, "src": "recipe"} for t in rec] + \
            [{"text": t, "src": "alpaca_howto"} for t in alp]
     json.dump(data, open(OUT, "w"))
-    print(f"Benign-instructional FPR seti: {len(rec)} tarif + {len(alp)} how-to = {len(data)}")
-    print("Ornekler:")
+    print(f"Benign-instructional FPR set: {len(rec)} recipes + {len(alp)} how-tos = {len(data)}")
+    print("Examples:")
     print("  [recipe]", repr(rec[0][:80]))
     if alp:
         print("  [howto] ", repr(alp[0][:80]))
-    print(f"Kaydedildi: {OUT}")
+    print(f"Saved: {OUT}")
 
 
 if __name__ == "__main__":

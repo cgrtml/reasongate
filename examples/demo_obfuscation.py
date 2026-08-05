@@ -40,5 +40,5 @@ fp = verdict(new, BENIGN)
 print(f"\nMesru prompt (FP testi): {fp}  ({'OK' if fp == 'allow' else 'YANLIS POZITIF!'})")
 
 # Aciklanabilirlik: yeni kalkan NEDEN blokladigini soyluyor mu?
-print("\n--- Aciklama ornegi (zero-width saldiri) ---")
+print("\n--- Explanation example (zero-width attack) ---")
 print(new.scan_input(ATTACKS["zero-width gizli"]).explain())

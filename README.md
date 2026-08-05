@@ -231,14 +231,27 @@ alone reached 0.96 — the score was an artifact of the data generator. The expl
 classifier is what surfaced that. The out-of-distribution drop from 0.97 to 0.88 is the
 real generalization number: it degrades, it does not collapse.
 
-Reproduce any of it:
+Reproduce any of it — grouped by what each script actually needs, because since 0.2.0
+the trained model lives in the add-on and only the rule-core benchmarks run against this
+repository alone:
 
 ```bash
+# Offline, no key, no add-on — runs against this repo as-is:
+python eval/public_bench.py     # over-defense on NotInject (339 benign)
+python eval/adversarial.py      # evasion robustness of the rule core
+
+# Needs `pip install reasongate[eval]` and a VOYAGE_API_KEY (embeddings):
 python eval/pipeline_real.py    # train/val/test with a validation-tuned threshold
 python eval/validate.py         # leakage check, trivial baselines, 5-fold CV, 5x2cv
+
+# Needs the enterprise add-on (the trained model moved there in 0.2.0):
 python eval/ood_test.py         # out-of-distribution generalization
-python eval/adversarial.py      # evasion robustness
+python eval/head_to_head.py     # vs ProtectAI deberta-v3
 ```
+
+The scripts in the third group exit with an explanation rather than a traceback when the
+add-on is absent. The methodology, thresholds and harness for all of them stay in this
+repository, so the numbers above remain auditable.
 
 ## Architecture: open core plus enterprise add-on
 

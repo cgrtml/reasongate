@@ -1,12 +1,12 @@
-"""Kafa-kafaya kiyas: BIZIM model vs mevcut firma modeli (ProtectAI deberta).
+"""Head-to-head: OUR model vs an existing vendor model (ProtectAI deberta).
   python eval/bench_existing.py
 
-Adil zemin: bizim SoftDecisionTree'nin EGITIMDE GORMEDIGI held-out set (train_save
-ile ayni 80/20, seed 42 -> va). Iki modeli ayni ornveklerde olcer.
+Fair ground: the held-out set our SoftDecisionTree NEVER SAW in training (the same
+80/20 split as train_save, seed 42 -> va). Both models are measured on the same samples.
 
-DURUST UYARI: ProtectAI muhtemelen deepset/jackhhao benzeri veriyle egitildi
-(yaygin egitim setleri) -> onun sayilari train-overlap ile sisebilir; bizimki va'da
-gercekten held-out. Bunu akilda tut.
+HONEST CAVEAT: ProtectAI was probably trained on data similar to deepset/jackhhao
+(the common training sets), so its numbers may be inflated by train overlap, while
+ours is genuinely held out on va. Keep that in mind when reading the table.
 """
 import hashlib
 import json
@@ -16,6 +16,7 @@ import warnings
 
 warnings.filterwarnings("ignore")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from eval._addon import require_addon
 
 import numpy as np
 from eval import metrics
@@ -28,6 +29,7 @@ MODELS = os.path.join(ROOT, "reasongate", "models")
 
 
 def main():
+    require_addon()  # the trained model moved to the enterprise add-on in 0.2.0
     pool = json.load(open(POOL, encoding="utf-8"))
     texts = [t for t, _ in pool]; y = np.array([l for _, l in pool])
     E = np.load(CACHE, allow_pickle=True)["emb"]
@@ -35,10 +37,10 @@ def main():
     from sklearn.model_selection import train_test_split
     tr, va = train_test_split(np.arange(len(y)), test_size=0.2, stratify=y, random_state=42)
     yva = y[va]
-    print(f"Held-out (bizim modelin gormedigi): {len(va)} ornek "
-          f"(saldiri={int(yva.sum())}, iyi={int((yva==0).sum())})")
+    print(f"Held-out (unseen by our model): {len(va)} samples "
+          f"(attacks={int(yva.sum())}, benign={int((yva==0).sum())})")
 
-    # --- BIZIM model ---
+    # --- OUR model ---
     import joblib
     model = joblib.load(os.path.join(MODELS, "soft_tree.joblib"))
     th = json.load(open(os.path.join(MODELS, "meta.json")))["threshold"]
@@ -59,7 +61,7 @@ def main():
     pa_pred05 = (pa_p >= 0.5).astype(int)
     m_pa = metrics.report(list(yva), list(pa_pred05))
 
-    # ProtectAI'yi BIZIM recall'a esitleyip FPR kiyasi (adil operasyon noktasi)
+    # match ProtectAI to OUR recall and compare FPR (a fair operating point)
     our_recall = m_our["recall"]
     th_pa = 0.0
     for t in sorted(set(np.round(pa_p, 4))):
@@ -69,15 +71,15 @@ def main():
             th_pa = t
     m_pa_eq = metrics.report(list(yva), list((pa_p >= th_pa).astype(int)))
 
-    print(f"\n=== BIZIM SoftDecisionTree (esik {th:.2f}, guvenlik-oncelikli) ===")
+    print(f"\n=== OUR SoftDecisionTree (threshold {th:.2f}, recall-first) ===")
     print(metrics.pretty(m_our))
-    print(f"\n=== ProtectAI deberta @0.5 (varsayilan) ===")
+    print(f"\n=== ProtectAI deberta @0.5 (default) ===")
     print(metrics.pretty(m_pa))
-    print(f"\n=== ProtectAI, bizim recall'a (%{100*our_recall:.0f}) esitlenince (esik {th_pa:.2f}) ===")
+    print(f"\n=== ProtectAI matched to our recall ({100*our_recall:.0f}%) (threshold {th_pa:.2f}) ===")
     print(metrics.pretty(m_pa_eq))
 
-    print("\nNOT: ProtectAI deepset/jackhhao benzeri veriyle egitilmis olabilir "
-          "(train-overlap -> onun lehine sapma). Bizimki va'da gercekten held-out.")
+    print("\nNOTE: ProtectAI may have been trained on data similar to deepset/jackhhao "
+          "(train overlap -> bias in its favour). Ours is genuinely held out on va.")
 
 
 if __name__ == "__main__":

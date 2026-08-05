@@ -1,9 +1,11 @@
-"""Embedding-as-features siniflandirici (gercek veri, guvenlik-oncelikli).
+"""Embedding-as-features classifier (real data, recall-first).
 
-  python eval/embed_clf.py   (once: python eval/fetch_real.py)
+  python eval/embed_clf.py   (first: python eval/fetch_real.py)
 
-"20 prompta benzerlik" yerine: her prompt'un TAM embedding'i (1024 boyut) ozellik;
-546 gercek ornekle siniflandirici egit. Bu, gorevin guclu standart yaklasimi.
+Instead of "similarity to 20 prompts": the FULL embedding of each prompt (1024
+dimensions) as features, training a classifier on 546 real samples. This is the
+strong standard approach for the task, and the step that took FPR from ~57% to
+~2% (see RESULTS.md).
 """
 import json
 import os
@@ -35,7 +37,7 @@ def report(name, sc_tr, ytr, sc_te, yte):
     th = tune_threshold(sc_tr, ytr)
     pred = (np.asarray(sc_te) >= th).astype(int)
     m = metrics.report(list(yte), list(pred))
-    print(f"\n=== {name}  (esik={th:.3f}) ===")
+    print(f"\n=== {name}  (threshold={th:.3f}) ===")
     print(metrics.pretty(m))
 
 
@@ -44,25 +46,25 @@ def main():
         d = json.load(f)
     tr, te = d["train"], d["test"]
     ytr = np.array([l for _, l in tr]); yte = np.array([l for _, l in te])
-    print(f"GERCEK veri — train {len(tr)} / test {len(te)}")
-    print("Embedding (1024 boyut) hesaplaniyor...")
+    print(f"REAL data - train {len(tr)} / test {len(te)}")
+    print("Computing embeddings (1024 dimensions)...")
     Xtr = np.array(emb.embed([t for t, _ in tr], input_type="document"))
     Xte = np.array(emb.embed([t for t, _ in te], input_type="document"))
 
     from sklearn.linear_model import LogisticRegression
     from neural_trees import SoftDecisionTree
 
-    print("\n############  EMBEDDING-AS-FEATURES (gercek veri, recall>=95%)  ############")
+    print("\n############  EMBEDDING-AS-FEATURES (real data, recall>=95%)  ############")
 
     lr = LogisticRegression(max_iter=2000, class_weight="balanced").fit(Xtr, ytr)
-    report("Lojistik Regresyon (embedding)", lr.predict_proba(Xtr)[:, 1], ytr,
+    report("Logistic Regression (embedding)", lr.predict_proba(Xtr)[:, 1], ytr,
            lr.predict_proba(Xte)[:, 1], yte)
 
     soft = SoftDecisionTree(depth=4, max_epochs=60, learning_rate=0.03, verbose=False).fit(Xtr, ytr)
     report("SoftDecisionTree (embedding) / neural-trees", soft.predict_proba(Xtr)[:, 1], ytr,
            soft.predict_proba(Xte)[:, 1], yte)
 
-    print("\nKiyas: onceki zayif sinyal (20-prompt benzerligi) recall %95'te FPR ~%57 idi.")
+    print("\nFor comparison: the earlier weak signal (similarity to 20 prompts) sat at ~57% FPR at 95% recall.")
 
 
 if __name__ == "__main__":

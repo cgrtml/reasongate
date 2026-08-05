@@ -1,12 +1,14 @@
 """Ablation:  python eval/ablation.py
 
-Soru: yuksek dogruluk GERCEK sinyalden mi, yoksa sentetik veri ARTEFAKTINDAN mi?
-Ayni agaci farkli ozellik altkumeleriyle egitip kiyaslar:
-  - TUM        : butun ozellikler
-  - ANLAMLI    : kural_skoru + ml_benzerlik (gercek injection sinyali)
-  - ARTEFAKT   : ozel_karakter + buyuk_harf (supheli yuzeysel ipuclari)
+The question: does the high accuracy come from REAL signal, or from an ARTIFACT
+of the synthetic data? Trains the same tree on different feature subsets:
+  - ALL       : every feature
+  - MEANINGFUL: rule score + ML similarity (genuine injection signal)
+  - ARTIFACT  : special-character ratio + uppercase ratio (suspicious surface cues)
 
-ARTEFAKT tek basina yuksek cikarsa -> yuksek sayilar sahte (veri sizdiriyor).
+If ARTIFACT alone scores high, the headline numbers are fake (the data leaks).
+
+This is the ablation that exposed the 0.98-F1 synthetic model in RESULTS.md.
 """
 import os
 import sys
@@ -20,6 +22,9 @@ import numpy as np
 from eval import dataset, metrics
 from reasongate import embeddings as emb
 from reasongate.features import build_features, FEATURE_NAMES
+from eval._addon import require_addon
+require_addon()  # the ML detector moved to the enterprise add-on in 0.2.0
+
 from reasongate.detectors.ml_injection import REFERENCE_ATTACKS
 
 
@@ -36,7 +41,7 @@ def main():
     data = dataset.load()
     prompts = [p for p, _ in data]
     y = np.array([l for _, l in data], dtype=int)
-    print(f"Embedding + ozellik ({len(prompts)} prompt)...")
+    print(f"Embedding + features ({len(prompts)} prompts)...")
     X = build_features(prompts, _ml_scores(prompts))
 
     from sklearn.model_selection import train_test_split
@@ -44,22 +49,22 @@ def main():
 
     idx = {n: i for i, n in enumerate(FEATURE_NAMES)}
     subsets = {
-        "TUM (7 ozellik)":        list(range(len(FEATURE_NAMES))),
-        "ANLAMLI (kural+ML)":     [idx["kural_skoru"], idx["ml_benzerlik"]],
-        "ARTEFAKT (noktalama+buyukharf)": [idx["ozel_karakter"], idx["buyuk_harf"]],
+        "ALL (7 features)":       list(range(len(FEATURE_NAMES))),
+        "MEANINGFUL (rule+ML)":   [idx["kural_skoru"], idx["ml_benzerlik"]],
+        "ARTIFACT (punctuation+case)": [idx["ozel_karakter"], idx["buyuk_harf"]],
     }
 
     Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.3, stratify=y, random_state=42)
-    print(f"\n{'Ozellik kumesi':32s} | recall | FPR  |  F1")
+    print(f"\n{'Feature subset':32s} | recall | FPR  |  F1")
     print("-" * 60)
     for name, cols in subsets.items():
         clf = DecisionTreeClassifier(max_depth=3, random_state=42)
         clf.fit(Xtr[:, cols], ytr)
         pred = clf.predict(Xte[:, cols])
         m = metrics.report(list(yte), list(pred))
-        print(f"{name:32s} | %{100*m['recall']:4.0f} | %{100*m['fpr']:3.0f} | {m['f1']:.3f}")
+        print(f"{name:32s} | {100*m['recall']:4.0f}% | {100*m['fpr']:3.0f}% | {m['f1']:.3f}")
 
-    print("\nYorum: ARTEFAKT tek basina yuksekse -> sayilar yuzeysel ipucundan, GERCEK degil.")
+    print("\nReading: if ARTIFACT alone scores high, the numbers come from surface cues, not REAL signal.")
 
 
 if __name__ == "__main__":

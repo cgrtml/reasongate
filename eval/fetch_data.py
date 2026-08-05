@@ -1,14 +1,14 @@
-"""Coklu GERCEK injection/jailbreak setini ceker, normalize+dedupe eder, havuz kaydeder.
+"""Fetches several REAL injection/jailbreak sets, normalizes, dedupes, saves the pool.
 
   python eval/fetch_data.py
 
-Kaynaklar (HF datasets-server, stdlib urllib):
+Sources (HF datasets-server, stdlib urllib):
   - deepset/prompt-injections           (text, label)
-  - jackhhao/jailbreak-classification    (prompt, type: jailbreak/benign)
-  - xTRam1/safe-guard-prompt-injection   (text, label '0'/'1')
+  - jackhhao/jailbreak-classification   (prompt, type: jailbreak/benign)
+  - xTRam1/safe-guard-prompt-injection  (text, label '0'/'1')
 
-Kayit: eval/data/pool.json  [[text, label], ...]  (label: 1=saldiri, 0=iyi-huylu)
-Veri gitignore'da.
+Output: eval/data/pool.json  [[text, label], ...]  (label: 1=attack, 0=benign)
+The data itself is gitignored.
 """
 import json
 import os
@@ -62,22 +62,22 @@ def main():
         try:
             r = fetch_all(ds, tf, lf, lm, cap)
             n1 = sum(l for _, l in r)
-            print(f"{ds}: {len(r)} (saldiri={n1}, iyi={len(r)-n1})")
+            print(f"{ds}: {len(r)} (attacks={n1}, benign={len(r)-n1})")
             pool += r
         except Exception as e:
-            print(f"{ds}: HATA {str(e)[:100]}")
+            print(f"{ds}: ERROR {str(e)[:100]}")
 
-    # dedupe (metin bazli)
+    # dedupe (by text)
     seen, dedup = set(), []
     for t, l in pool:
         k = " ".join(t.lower().split())
         if k not in seen:
             seen.add(k); dedup.append([t, l])
     n1 = sum(l for _, l in dedup)
-    print(f"\nHAVUZ (dedupe): {len(dedup)} | saldiri={n1} iyi-huylu={len(dedup)-n1}")
+    print(f"\nPOOL (deduped): {len(dedup)} | attacks={n1} benign={len(dedup)-n1}")
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(dedup, f, ensure_ascii=False)
-    print("Kaydedildi:", OUT)
+    print("Saved:", OUT)
 
 
 if __name__ == "__main__":
