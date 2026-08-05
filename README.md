@@ -24,8 +24,8 @@ The open-source core is rule-based. It does four things:
 These are wired as a pipeline, not a flat blocklist: normalization strips the disguise
 first, the pattern and indirect-injection layers then match, and a calibrated noisy-OR
 policy fuses several weak signals into one decision. The measurable effect is that raw
-regex catches 20% of *obfuscated* known attacks while the normalization + fusion pipeline
-recovers that to 76% (100% on zero-width–hidden payloads). It still does not catch
+regex catches 21% of *obfuscated* known attacks while the normalization + fusion pipeline
+recovers that to 78% (100% on zero-width–hidden payloads). It still does not catch
 reworded, semantically novel phrasings — that is a separate embedding layer (below), not
 the rule core.
 
@@ -40,11 +40,13 @@ instructions and data through the same channel, so anything expressible in langu
 phrased to get through. Signature matching catches attacks it has a pattern for; it does
 not catch reworded or semantically novel ones.
 
-Concretely, on our own benchmark the rule core catches **0% of the naturally-phrased
-attacks** in `deepset/prompt-injections` (at 0% false positives). It catches known
-phrasings and their obfuscated variants, and nothing else. Semantic recall comes from an
-embedding-based detector that ships as a separate, separately-licensed add-on, and even
-that reaches only ~88% on out-of-distribution data.
+Concretely, on our own benchmark the rule core catches **6.7% of the naturally-phrased
+attacks** in `deepset/prompt-injections` (at 0% false positives) — and that number is only
+above zero because the pattern families were recently widened to cover their synonyms; it
+was 0.0% before. It catches known phrasings and their obfuscated variants, and essentially
+nothing else. Semantic recall comes from an embedding-based detector that ships as a
+separate, separately-licensed add-on, and even that reaches only ~88% on
+out-of-distribution data.
 
 Run ReasonGate as one layer in defense-in-depth: a low-false-positive first pass and an
 audit trail, with the model's own safety training and other controls behind it. Do not run
@@ -207,8 +209,8 @@ recovers most of it:
 
 | | Recall under evasion | FPR | F1 |
 |---|---:|---:|---:|
-| Regex only | 20.0% | 3.3% | 0.332 |
-| Core (normalize + indirect) | 75.6% | 6.7% | 0.855 |
+| Regex only | 21.2% | 3.3% | 0.349 |
+| Core (normalize + indirect) | 78.1% | 6.7% | 0.871 |
 
 This is recall on *obfuscated variants of patterns the core already knows*. It is not
 recall on novel phrasings — that is the 0% figure noted above.
