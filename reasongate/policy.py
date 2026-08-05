@@ -1,8 +1,8 @@
-"""Policy: tespitlerden karar uretir (blokla / isaretle / izin ver) + gerekce.
+"""Policy: turns detections into a decision (block / flag / allow) + reason.
 
-Esik tabanli ve seffaf. Tek-dedektor esiklerine EK olarak, birden cok
-ZAYIF sinyali noisy-OR ile birlestiren bir fuzyon katmani var: tek basina
-hicbiri blok esigini gecmese de, birkac orta sinyal birikince blok uretir.
+Threshold based and transparent. On top of per-detector thresholds there is a
+fusion layer that combines several WEAK signals with a noisy-OR: none of them
+crosses the block threshold alone, but a few medium signals together do.
 """
 from __future__ import annotations
 
@@ -10,15 +10,15 @@ from typing import List, Tuple
 
 from reasongate.types import Detection
 
-# Noisy-OR fuzyonunda gurultu tabani: bu degerin altindaki skorlar
-# (mesru metinlerin rastgele dusuk sinyalleri) birlestirmeye katilmaz.
+# Noise floor for noisy-OR fusion: scores below this value (the random low
+# signals of legitimate text) do not take part in the combination.
 FUSION_FLOOR = 0.3
 
 
 def fuse(scores: List[float], floor: float = FUSION_FLOOR) -> float:
-    """Noisy-OR: birbirinden bagimsiz sinyalleri birlestirir.
-    fused = 1 - PROD(1 - s_i). Sadece floor ustu sinyaller katilir ki
-    mesru metnin rastgele dusuk skorlari yapay blok uretmesin."""
+    """Noisy-OR: combines mutually independent signals.
+    fused = 1 - PROD(1 - s_i). Only signals above the floor participate, so the
+    random low scores of legitimate text cannot manufacture a block."""
     contributing = [s for s in scores if s >= floor]
     prod = 1.0
     for s in contributing:
@@ -29,12 +29,12 @@ def fuse(scores: List[float], floor: float = FUSION_FLOOR) -> float:
 def decide(detections: List[Detection],
            block_threshold: float = 0.8,
            flag_threshold: float = 0.5) -> Tuple[str, List[Detection]]:
-    """Donus: (action, tetikleyen_tespitler). action in {allow, flag, block}.
+    """Returns (action, triggering_detections). action in {allow, flag, block}.
 
-    Blok karari uc yoldan biriyle verilir:
-      1) Bir dedektorun KENDI kalibre esigi asilirsa (d.triggered), VEYA
-      2) Tek bir skor block_threshold'u asarsa (Shield.block_threshold anlamli), VEYA
-      3) Coklu zayif sinyalin NOISY-OR fuzyonu block_threshold'u asarsa.
+    A block is reached in one of three ways:
+      1) a detector's OWN calibrated threshold is crossed (d.triggered), OR
+      2) a single score crosses block_threshold (Shield.block_threshold applies), OR
+      3) the NOISY-OR fusion of several weak signals crosses block_threshold.
     """
     if not detections:
         return "allow", []
@@ -45,7 +45,7 @@ def decide(detections: List[Detection],
     if blockers:
         return "block", blockers
 
-    # Fuzyon: birden cok orta sinyal birikince blok.
+    # Fusion: several medium signals accumulating into a block.
     fused = fuse([d.score for d in detections])
     if fused >= block_threshold:
         contributors = [d for d in detections if d.score >= FUSION_FLOOR]

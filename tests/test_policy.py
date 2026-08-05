@@ -1,6 +1,6 @@
-"""policy.fuse / policy.decide — fuzyon matematigi ve karar yollari.
+"""policy.fuse / policy.decide — the fusion math and the decision paths.
 
-Bunlar cekirdegin sifir-bagimlilik, deterministik kalbi; saf birim testleri.
+These are the deterministic, zero-dependency heart of the core; pure unit tests.
 """
 from reasongate import policy
 from reasongate.types import Detection
@@ -17,12 +17,12 @@ def test_fuse_empty_is_zero():
 
 
 def test_fuse_below_floor_ignored():
-    # floor=0.3 altindaki sinyaller birlestirmeye katilmaz
+    # signals below floor=0.3 do not take part in the combination
     assert policy.fuse([0.1, 0.2]) == 0.0
 
 
 def test_fuse_single_signal_passes_through():
-    assert policy.fuse([0.2, 0.9]) == 0.9  # 0.2 floor altinda, sadece 0.9 katilir
+    assert policy.fuse([0.2, 0.9]) == 0.9  # 0.2 is below the floor, only 0.9 contributes
 
 
 def test_fuse_noisy_or_combines():
@@ -31,7 +31,7 @@ def test_fuse_noisy_or_combines():
 
 
 def test_fuse_two_weak_signals_can_exceed_block():
-    # tek basina hicbiri 0.8'i gecmez ama fuzyon gecer
+    # neither crosses 0.8 alone, but their fusion does
     fused = policy.fuse([0.6, 0.6])  # 1 - 0.4*0.4 = 0.84
     assert fused > 0.8
 
@@ -49,7 +49,7 @@ def test_decide_triggered_blocks():
 
 
 def test_decide_score_over_block_threshold_blocks():
-    # triggered=False ama skor block_threshold ustunde
+    # triggered=False, but the score is above block_threshold
     action, _ = policy.decide([_det(0.85)], block_threshold=0.8)
     assert action == "block"
 

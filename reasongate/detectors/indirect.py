@@ -1,17 +1,18 @@
-"""Dolayli (indirect) prompt injection dedektoru.
+"""Indirect prompt-injection detector.
 
-Prod'da en yaygin saldiri: kotu talimat KULLANICI promptunda degil,
-modelin OKUDUGU icerikte gizlidir — RAG dokumani, web sayfasi, tool
-ciktisi, e-posta govdesi. Kullanici masum gorunur; saldiri "veri"nin
-icindedir.
+The most common attack in production: the malicious instruction is not in the
+USER's prompt but hidden in the content the model READS — a RAG document, a web
+page, tool output, an email body. The user looks innocent; the attack lives in
+the "data".
 
-Bu dedektor, retrieve edilen icerik PARCALARINI tarar ve:
-  1) Var olan injection + normalization (obfuscation) dedektorlerini icerige uygular,
-  2) Dolayli-enjeksiyona OZGU kaliplari arar: veri icinde asistana
-     yonelen emirler, gizli HTML/markdown yorumlari, exfiltration talimatlari.
+This detector scans the retrieved content SEGMENTS and:
+  1) applies the existing injection + normalization (obfuscation) detectors to them,
+  2) looks for patterns SPECIFIC to indirect injection: commands aimed at the
+     assistant from inside data, hidden HTML/markdown comments, exfiltration
+     instructions.
 
-Kullanim: Shield.protect(prompt, llm_fn, context=[...]) — context icindeki
-parcalar LLM'e gitmeden once taranir.
+Usage: Shield.protect(prompt, llm_fn, context=[...]) — the segments in context
+are scanned before they reach the LLM.
 """
 from __future__ import annotations
 
@@ -21,7 +22,7 @@ from typing import List, Tuple
 from reasongate.detectors.base import Detector
 from reasongate.types import Detection
 
-# Dolayli-enjeksiyona OZGU kaliplar (veri icine gomulu asistan-emirleri).
+# Patterns SPECIFIC to indirect injection (assistant-directed commands embedded in data).
 _PATTERNS: List[Tuple[str, str, float]] = [
     (r"(ignore|disregard|forget)\s+(the\s+)?(user|above|previous|prior|all)",
      "'ignore the user/above' command inside data", 0.9),
@@ -46,16 +47,17 @@ _PATTERNS: List[Tuple[str, str, float]] = [
     (r"kullanic[ıi]ya\s+(soyleme|haber\s+verme|bildirme)",
      "hide from the user (TR)", 0.9),
 
-    # --- BIPIA aile-1: cikti-yonelimli meta-direktifler (SIKILASTIRILMIS) ---
-    # Sinyal SPESIFIK: asistanin KENDI ciktisina yonelik DONUSUM/ENKODLAMA, ya da
-    # ciktiya PROMOSYON/LINK enjeksiyonu. Belirsiz olanlar (generic 'modify your
-    # response', 'translate your response') BILINCLI atildi — mesru musteri-hizmet
-    # metni ("edit your response in settings") over-block edilmesin (wedge korunur).
-    # Encode/encrypt/cipher + asistan-ciktisi (near-unambiguous):
+    # --- BIPIA family 1: output-directed meta-directives (TIGHTENED) ---
+    # The signal is SPECIFIC: a TRANSFORM/ENCODING aimed at the assistant's OWN
+    # output, or a PROMOTION/LINK injected into it. Ambiguous ones (generic
+    # 'modify your response', 'translate your response') were DELIBERATELY dropped
+    # so legitimate customer-service text ("edit your response in settings") is not
+    # over-blocked (the over-defense wedge is preserved).
+    # Encode/encrypt/cipher + assistant output (near-unambiguous):
     (r"(encode|encrypt|decode|encipher|cipher)\b[^.\n]{0,40}"
      r"\byour\s+(response|reply|answer|output|message)\b",
      "encode/encrypt the output (encode your response)", 0.85),
-    # ciktiyi su KODLAMADA ver (dil DEGIL — base/rot/hex/morse/cipher/emoji):
+    # give the output in THIS ENCODING (not a language — base/rot/hex/morse/cipher/emoji):
     (r"\byour\s+(response|reply|answer|output|message)\b[^.\n]{0,28}"
      r"\b(in|with|as|using|into)\b[^.\n]{0,22}"
      r"(base\s?\d+|rot[\s-]?13|hex(adecimal)?|morse|[a-z]+\s+cipher|emoji)",
@@ -64,16 +66,17 @@ _PATTERNS: List[Tuple[str, str, float]] = [
      r"\b(only\s+)?(in|with|using)\b[^.\n]{0,18}"
      r"(base\s?\d+|rot[\s-]?13|hex(adecimal)?|morse|[a-z]+\s+cipher|emoji|pig\s+latin)",
      "respond in a given encoding (respond in Base64)", 0.85),
-    # emoji ile cikti donusumu:
+    # transform the output into emoji:
     (r"emoji[^.\n]{0,30}\byour\s+(response|reply|answer|message|output)|"
      r"\byour\s+(response|reply|answer|message)[^.\n]{0,20}emoji",
      "convert the output to emoji", 0.85),
-    # ciktiyi tersine cevir:
+    # reverse the output:
     (r"\byour\s+(response|reply|answer|message|output)[^.\n]{0,20}"
      r"(backward|backwards|reversed|inverted|in\s+reverse)|"
      r"(reverse|invert)\b[^.\n]{0,25}\byour\s+(response|reply|answer|message|output)",
      "reverse the output", 0.85),
-    # ciktiya PROMOSYON/LINK enjeksiyonu (promo nesnesi SART; 'order ID ekle' tetiklemez):
+    # PROMOTION/LINK injection into the output (a promo object is REQUIRED, so
+    # "add your order ID to your reply" does not fire):
     (r"\byour\s+(response|reply|answer|output|message)\b[^.\n]{0,75}"
      r"(https?://|www\.|\blink\b|promot|advertis|subscrib|coupon|lottery|"
      r"investment|\boffer\b|\bdeal\b|\bbrand\b|newsletter|antivirus)"
@@ -86,13 +89,13 @@ _PATTERNS: List[Tuple[str, str, float]] = [
 
 class IndirectInjectionDetector(Detector):
     name = "indirect_injection"
-    stage = "input"   # context, LLM cagrilmadan once taranir
+    stage = "input"   # context is scanned before the LLM is called
 
     def __init__(self, block_score: float = 0.8, scan_obfuscation: bool = True):
         self._compiled = [(re.compile(p, re.IGNORECASE | re.DOTALL), label, w)
                           for p, label, w in _PATTERNS]
         self.block_score = block_score
-        # Dolayli icerik de gizlenebilir; obfuscation katmanini uygula.
+        # Indirect content can be disguised too; apply the obfuscation layer.
         self._norm = None
         if scan_obfuscation:
             from reasongate.detectors.normalize import NormalizationDetector
@@ -107,7 +110,7 @@ class IndirectInjectionDetector(Detector):
                 matches.append(label)
                 max_w = max(max_w, w)
 
-        # icerige gizlenmis (obfuscated) dogrudan-enjeksiyon da dolayli saldiridir
+        # a direct injection obfuscated inside the content is also an indirect attack
         if self._norm is not None:
             nd = self._norm.scan(text)
             if nd.matches:

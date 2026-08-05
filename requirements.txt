@@ -1,9 +1,10 @@
-# v0 cekirdek (Shield + kural dedektorleri): ek bagimlilik yok (saf Python).
+# The core (Shield + rule detectors) needs no extra dependency (pure Python).
 
-# ML / degerlendirme adimlari icin:
+# For the ML / evaluation steps:
 voyageai>=0.3          # embedding (ml_injection)
-scikit-learn>=1.3      # DecisionTree (karsilastirma) + train_test_split
-neural-trees>=0.1.2    # SoftDecisionTree + combined_5x2cv_f_test + mcnemar_test (torch ceker)
-numpy<2                # ONEMLI: torch/neural-trees bu ortamda numpy<2 ister
+scikit-learn>=1.3      # DecisionTree (comparison) + train_test_split
+neural-trees>=0.1.2    # SoftDecisionTree + combined_5x2cv_f_test + mcnemar_test (pulls torch)
+numpy<2                # PINNED: torch/neural-trees need numpy<2 here; also the
+                       # version the published benchmark numbers were produced with
 fastapi>=0.104
 uvicorn>=0.24

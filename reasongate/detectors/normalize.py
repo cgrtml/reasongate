@@ -1,19 +1,19 @@
-"""Girdi normalizasyonu + obfuscation (gizleme) tespiti.
+"""Input normalization + obfuscation detection.
 
-Regex/ML dedektorlerinin EN buyuk acigi: saldirgan metni gizleyince
-("1gn0re", sifir-genislik karakterler, Kiril homoglyph'leri, "i g n o r e")
-kalip eslesmesi patlar ve saldiri suzulur.
+The single biggest hole in regex/ML detectors: once the attacker disguises the
+text ("1gn0re", zero-width characters, Cyrillic homoglyphs, "i g n o r e"),
+pattern matching falls apart and the attack slips through.
 
-Bu katman saldiri yuzeyini DUZLESTIRIR:
-  - Unicode NFKC + homoglyph (Kiril/Yunan -> Latin) katlamasi
-  - Gorunmez karakter temizligi (zero-width, bidi, kontrol) — bunlarin
-    VARLIGI tek basina guclu bir saldiri sinyalidir
-  - Token-kirma ayiraclarini birlestirme ("i.g.n.o.r.e" -> "ignore")
-  - Leetspeak katlamasi ("1gn0re" -> "ignore")
-  - Gizli base64 yuklerini cozme
+This layer FLATTENS the attack surface:
+  - Unicode NFKC + homoglyph folding (Cyrillic/Greek -> Latin)
+  - Invisible-character stripping (zero-width, bidi, control) — their mere
+    PRESENCE is a strong attack signal on its own
+  - Joining token-breaking separators ("i.g.n.o.r.e" -> "ignore")
+  - Leetspeak folding ("1gn0re" -> "ignore")
+  - Decoding hidden base64 payloads
 
-Cikti hem TEMIZLENMIS metni hem de UYGULANAN DONUSUMLERI tasir; boylece
-karar kara kutu degil, "su gizleme tespit edildi" diye aciklanabilir.
+The output carries both the CLEANED text and the TRANSFORMS APPLIED, so the
+decision is explainable ("this disguise was detected") rather than a black box.
 """
 from __future__ import annotations
 
@@ -26,8 +26,8 @@ from typing import List
 from reasongate.detectors.base import Detector
 from reasongate.types import Detection
 
-# --- Gorunmez / tehlikeli karakterler -------------------------------------
-# Zero-width, bidi-override, soft-hyphen, BOM, kontrol karakterleri.
+# --- Invisible / dangerous characters --------------------------------------
+# Zero-width, bidi-override, soft hyphen, BOM, control characters.
 _STEALTH_CHARS = {
     "​", "‌", "‍", "⁠", "﻿",  # zero-width / BOM
     "­",                                            # soft hyphen
@@ -35,7 +35,7 @@ _STEALTH_CHARS = {
     "⁦", "⁧", "⁨", "⁩",              # bidi isolate
 }
 
-# --- Homoglyph: yaygin Kiril/Yunan -> Latin benzerleri --------------------
+# --- Homoglyphs: common Cyrillic/Greek look-alikes -> Latin ----------------
 _HOMOGLYPHS = {
     "а": "a", "е": "e", "о": "o", "р": "p", "с": "c", "у": "y", "х": "x",
     "і": "i", "ј": "j", "ѕ": "s", "к": "k", "н": "h", "м": "m", "т": "t",
@@ -44,7 +44,7 @@ _HOMOGLYPHS = {
     "ι": "i", "η": "n", "υ": "u", "χ": "x",
 }
 
-# --- Leetspeak katlamasi ---------------------------------------------------
+# --- Leetspeak folding -----------------------------------------------------
 _LEET = str.maketrans({"0": "o", "1": "i", "3": "e", "4": "a", "5": "s",
                        "7": "t", "@": "a", "$": "s", "!": "i"})
 
@@ -53,10 +53,10 @@ _B64_RE = re.compile(r"\b[A-Za-z0-9+/]{16,}={0,2}\b")
 
 @dataclass
 class NormalizationResult:
-    text: str                                  # NFKC + homoglyph + stealth temizligi
-    variants: List[str] = field(default_factory=list)  # ek tarama yuzeyleri
-    transforms: List[str] = field(default_factory=list)  # insan-okunur "ne yapildi"
-    stealth_found: bool = False                # gorunmez karakter var miydi
+    text: str                                  # NFKC + homoglyph + stealth cleanup
+    variants: List[str] = field(default_factory=list)  # extra scanning surfaces
+    transforms: List[str] = field(default_factory=list)  # human-readable "what was done"
+    stealth_found: bool = False                # were there invisible characters
 
 
 def _strip_stealth(text: str) -> tuple[str, int]:
@@ -82,22 +82,22 @@ def _fold_homoglyphs(text: str) -> tuple[str, int]:
 
 
 def _collapse_spaced(text: str) -> str:
-    """Tek-harf token'lari ayiraclardan kurtarip birlestir:
-    "i g n o r e" / "i.g.n.o.r.e" -> "ignore". Sadece >=4 tek-harf zinciri
-    icin uygulanir (normal metni bozmamak icin muhafazakar).
+    """Free single-letter tokens from their separators and join them:
+    "i g n o r e" / "i.g.n.o.r.e" -> "ignore". Applied only to runs of >=4
+    single letters (conservative, so ordinary text is not mangled).
 
-    Kelime sinirini akilli tespit eder:
-      - run'da bosluk-DISI ayrac (. - _ * |) varsa -> bosluklar kelime
-        siniridir: "i.g.n.o.r.e a.l.l" -> "ignore all"
-      - sadece bosluk varsa -> 2+ bosluk kelime siniridir:
+    Word boundaries are inferred:
+      - if the run contains a NON-space separator (. - _ * |) -> spaces are the
+        word boundary: "i.g.n.o.r.e a.l.l" -> "ignore all"
+      - if there are only spaces -> 2+ spaces are the word boundary:
         "i g n o r e   p r e v" -> "ignore prev"
     """
     def _join(m: re.Match) -> str:
         run = m.group(0)
         if re.search(r"[._\-*|]", run):
-            words = run.split()                       # tek bosluk = kelime siniri
+            words = run.split()                       # a single space = word boundary
         else:
-            words = re.split(r"\s{2,}", run)          # 2+ bosluk = kelime siniri
+            words = re.split(r"\s{2,}", run)          # 2+ spaces = word boundary
         return " ".join(re.sub(r"[\s._\-*|]+", "", w) for w in words)
     return re.sub(r"\b\w(?:[\s._\-*|]+\w\b){3,}", _join, text)
 
@@ -140,7 +140,7 @@ def normalize(text: str) -> NormalizationResult:
     if leet != cleaned:
         transforms.append("leetspeak folded (0->o, 1->i, ...)")
         variants.append(leet)
-        # leet + collapsed birlesimi de bir yuzey
+        # the leet + collapsed combination is a surface of its own
         leet_collapsed = _collapse_spaced(leet)
         if leet_collapsed not in (leet, collapsed):
             variants.append(leet_collapsed)
@@ -158,13 +158,13 @@ def normalize(text: str) -> NormalizationResult:
 
 
 class NormalizationDetector(Detector):
-    """Gizlenmis (obfuscated) saldiriyi yakalar.
+    """Catches obfuscated attacks.
 
-    1) Gorunmez karakter / bidi varsa -> tek basina yuksek risk (mesru
-       kullanicilar promptlarina zero-width karakter saklamaz).
-    2) Normalize edilmis metni VE tum varyantlari injection dedektoruyle
-       tarar; HAM metin tetiklemeyip bir varyant tetikliyorsa, bu
-       "regex'i atlatmak icin gizlenmis saldiri" demektir -> risk + bonus.
+    1) Invisible / bidi characters present -> high risk on their own (legitimate
+       users do not hide zero-width characters in their prompts).
+    2) Scans the normalized text AND every variant with the injection detector;
+       if the RAW text does not fire but a variant does, that means "an attack
+       disguised to evade the pattern layer" -> risk + bonus.
     """
     name = "normalization"
     stage = "input"
@@ -189,12 +189,12 @@ class NormalizationDetector(Detector):
         for surf in surfaces:
             d = self._inj.scan(surf)
             if d.matches and not raw_hit.matches:
-                # ham metinde gorunmeyip normalize sonrasi ortaya cikan saldiri
+                # an attack invisible in the raw text that surfaces after normalization
                 if d.score > (best_obf.score if best_obf else 0.0):
                     best_obf = d
 
         if best_obf is not None:
-            score = max(score, min(1.0, best_obf.score + 0.1))  # gizleme = niyet bonusu
+            score = max(score, min(1.0, best_obf.score + 0.1))  # disguise = intent bonus
             evidence.append(f"obfuscated injection ({', '.join(best_obf.matches[:3])})")
 
         triggered = score >= self.threshold

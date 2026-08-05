@@ -5,6 +5,13 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    ignore:
+      # numpy is pinned to <2 on purpose: the published benchmark numbers in
+      # RESULTS.md were produced with numpy 1.26.x, and torch/neural-trees
+      # (pulled in by the eval extra) break on numpy 2 in that environment.
+      # It is a reproducibility pin, not a stale one - do not auto-bump it.
+      - dependency-name: "numpy"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

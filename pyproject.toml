@@ -19,7 +19,7 @@ classifiers = [
     "Topic :: Security",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-# Cekirdek (Shield + kural/normalize/indirect/canary dedektorleri) SAF PYTHON — sifir bagimlilik.
+# The core (Shield + the rule/normalize/indirect/canary detectors) is PURE PYTHON - zero dependencies.
 dependencies = []
 
 [project.optional-dependencies]

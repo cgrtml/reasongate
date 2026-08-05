@@ -1,4 +1,4 @@
-"""reasongate — model-bagimsiz, aciklanabilir LLM guvenlik kalkani."""
+"""reasongate — a model-agnostic, explainable security gate for LLM apps."""
 from reasongate.agent_gate import GateDecision, ToolGate, ToolPolicy
 from reasongate.audit import AuditHook, file_sink, log_sink
 from reasongate.shield import Shield

@@ -1,16 +1,17 @@
-"""Denetim (audit) yayini — yapisal, SIEM-dostu, sifir-bagimlilik.
+"""Audit emission — structured, SIEM-friendly, zero-dependency.
 
-Her karar (ShieldResult) bir denetim kaydina cevrilebilir (bkz. types.to_dict).
-Bu modul o kayitlari bir 'sink'e yollayan hafif kancalar saglar. Varsayilan
-sink Python'un standart logging'idir ("reasongate.audit" logger'i) — yani
-ek bagimlilik yok ve mevcut log altyapisina (journald, ELK, Splunk forwarder)
-dogrudan akar.
+Every decision (ShieldResult) converts to an audit record (see types.to_dict).
+This module provides the lightweight hooks that push those records to a 'sink'.
+The default sink is Python's standard logging (the "reasongate.audit" logger),
+so there is no extra dependency and records flow straight into existing log
+infrastructure (journald, ELK, a Splunk forwarder).
 
-Tasarim ilkesi: DENETIM ASLA KAPIYI BOZMAZ. Bir audit kancasi hata atarsa
-guvenlik karari yine de doner; hata yutulup ayri bir kanaldan raporlanir.
+Design principle: THE AUDIT TRAIL NEVER BREAKS THE GATE. If an audit hook
+raises, the security decision is still returned; the error is swallowed and
+reported on a separate channel.
 
-Kurumsal sink'ler (tamper-evident hash-chain, dogrudan SIEM connector,
-saklama/retention politikasi) bu kanca uzerine ayri (private) katmanda kurulur.
+Enterprise sinks (tamper-evident hash chain, direct SIEM connectors, retention
+policy) are built on top of this hook in a separate (private) layer.
 """
 from __future__ import annotations
 
@@ -19,25 +20,27 @@ from typing import Callable, TextIO
 
 from reasongate.types import ShieldResult
 
-# Karar kayitlari icin ayrilmis logger. Uygulama bunu istedigi handler'a baglar.
+# Dedicated logger for decision records. The application attaches whatever
+# handler it wants to it.
 audit_logger = logging.getLogger("reasongate.audit")
 
-# Kanca hatalarini bildiren ayri logger (denetim hattindan ayrik tutulur).
+# Separate logger for hook failures (kept off the audit channel itself).
 _internal_logger = logging.getLogger("reasongate")
 
-# Bir denetim kancasi: kararı alir, yan-etki olarak yayinlar (donus degeri yok).
+# An audit hook: takes the decision and emits it as a side effect (no return).
 AuditHook = Callable[[ShieldResult], None]
 
 
 def log_sink(result: ShieldResult) -> None:
-    """Varsayilan kanca: kararı tek-satir JSON olarak 'reasongate.audit'e yazar."""
+    """Default hook: writes the decision as single-line JSON to 'reasongate.audit'."""
     audit_logger.info(result.to_json())
 
 
 def file_sink(path: str, *, include_output: bool = True) -> AuditHook:
-    """Kararlari JSON-Lines (her satir bir karar) olarak bir dosyaya ekleyen kanca.
+    """Hook that appends decisions to a file as JSON-Lines (one decision per line).
 
-    SIEM ve arsiv icin standart format. Dosya append modunda acik tutulur."""
+    The standard format for SIEM ingestion and archival. The file is kept open
+    in append mode."""
     fh: TextIO = open(path, "a", encoding="utf-8")
 
     def _sink(result: ShieldResult) -> None:
@@ -48,9 +51,10 @@ def file_sink(path: str, *, include_output: bool = True) -> AuditHook:
 
 
 def safe_emit(hook: AuditHook, result: ShieldResult) -> None:
-    """Kancayi cagirir; hata atarsa yutar ve ayri kanaldan loglar.
-    Denetim yayini hicbir kosulda guvenlik kararini bozmamali."""
+    """Call the hook; swallow any error and log it on a separate channel.
+    Emitting an audit record must never, under any circumstance, break the
+    security decision."""
     try:
         hook(result)
-    except Exception:  # pragma: no cover - savunma amacli
-        _internal_logger.exception("audit kancasi basarisiz oldu (karar etkilenmedi)")
+    except Exception:  # pragma: no cover - defensive
+        _internal_logger.exception("audit hook failed (the security decision was not affected)")

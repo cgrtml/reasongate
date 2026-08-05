@@ -1,21 +1,23 @@
-"""Imperatif-form kapisi — niyet-hizalama dedektorunun aday-span cikarici.
+"""Imperative-form gate — the candidate-span extractor for the intent-alignment
+detector.
 
-Chunk'i cumle-seviyesinde boler, sadece IMPERATIF/direktif formundaki span'leri
-gecirir. Sadece kapidan gecen span'ler embed edilir (maliyet + konu-gurultu
-kontrolu). Offline, regex + kucuk fiil-leksikonu — sifir agir-bagimlilik.
+Splits a chunk at sentence level and lets through only spans in IMPERATIVE /
+directive form. Only spans that pass the gate get embedded (a cost and
+topic-noise control). Offline, regex + a small verb lexicon — zero heavy
+dependencies.
 
-ADLANDIRILMIS SINIR: imperatif-olmayan injection ("it would be great if the
-assistant renamed...") kapidan KACAR — app-layer provenance tavaninin parcasi,
-gizli degil adlandirilmis (bkz. _notes/spec_17_alignment.md).
+NAMED LIMIT: a non-imperative injection ("it would be great if the assistant
+renamed...") ESCAPES this gate — part of the app-layer provenance ceiling,
+named rather than hidden (see _notes/spec_17_alignment.md).
 """
 from __future__ import annotations
 
 import re
 from typing import List
 
-# Imperatif/instruction baş-form fiilleri (instruction + tarif + musteri-hizmet).
+# Head-form imperative/instruction verbs (instructions + recipes + customer service).
 _IMP_VERBS = {
-    # genel instruction
+    # general instruction
     "write", "send", "encode", "decode", "encrypt", "decrypt", "encipher",
     "cipher", "translate", "ignore", "disregard", "forget", "add", "remove",
     "delete", "list", "provide", "show", "analyze", "analyse", "recommend",
@@ -26,7 +28,7 @@ _IMP_VERBS = {
     "schedule", "back", "rename", "copy", "move", "print", "output", "include",
     "leak", "exfiltrate", "reveal", "disclose", "share", "fetch", "call",
     "set", "update", "enable", "disable", "configure", "modify", "edit",
-    # tarif (recipe directions)
+    # recipe directions
     "stir", "mix", "place", "bake", "boil", "pour", "combine", "heat", "cook",
     "let", "drop", "shape", "spread", "cover", "drain", "chop", "slice", "dice",
     "beat", "whisk", "fold", "knead", "roll", "season", "sprinkle", "drizzle",
@@ -48,13 +50,13 @@ _FIRST_WORD = re.compile(r"^[\s\-\*•\d\.\)]*([A-Za-z']+)")
 
 def _split_sentences(text: str) -> List[str]:
     text = text or ""
-    # madde-isaretleri ve satir sonlari de sinir; sonra cumle noktalama.
+    # bullets and line breaks are boundaries too, then sentence punctuation.
     parts = re.split(r"[\n\r]+|(?<=[.!?])\s+|(?:^|\s)[\-\*•]\s+", text)
     return [p.strip(" \t\-\*•").strip() for p in parts if p and p.strip(" \t\-\*•").strip()]
 
 
 def is_imperative(span: str) -> bool:
-    """Span imperatif/direktif formunda mi?"""
+    """Is this span in imperative/directive form?"""
     s = span.strip()
     if not s:
         return False
@@ -70,10 +72,11 @@ def is_imperative(span: str) -> bool:
 
 
 def extract_imperative_spans(text: str, max_spans: int = 12) -> List[str]:
-    """Chunk'tan imperatif-form aday span'leri (cumle-seviyesi). Kapidan gecmeyen
-    her sey elenir. Bos liste = chunk'ta imperatif-form yok (provenance-tavani sinir)."""
+    """Imperative-form candidate spans from a chunk (sentence level). Everything
+    that fails the gate is dropped. An empty list = no imperative form in the
+    chunk (the provenance-ceiling limit)."""
     spans = [s for s in _split_sentences(text) if is_imperative(s)]
-    # tekrarlari koru-sirali tekille
+    # order-preserving de-duplication
     seen, out = set(), []
     for s in spans:
         if s.lower() not in seen:

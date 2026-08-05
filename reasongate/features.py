@@ -1,7 +1,11 @@
-"""Ozellik cikarimi: bir prompt'u yorumlanabilir sayisal vektore cevirir.
+"""Feature extraction: turns a prompt into an interpretable numeric vector.
 
-Ozellikler kasitli olarak AZ ve ANLAMLI tutulur ki agacin kararlari aciklanabilir
-olsun (her ozellik bir cumleyle ifade edilebilir).
+The features are deliberately FEW and MEANINGFUL so the tree's decisions stay
+explainable (each feature can be stated in one sentence).
+
+NOTE: the FEATURE_NAMES strings below are a cross-repo contract with the
+enterprise ML add-on (which trains and loads models over this exact vector), so
+they are left as-is; renaming them must be done in both repos at once.
 """
 from __future__ import annotations
 

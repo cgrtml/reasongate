@@ -13,14 +13,14 @@ jobs:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 
-      # Cekirdek SIFIR-BAGIMLILIK: kurulum tek basina hicbir dis paket cekmez.
-      # Bu adimin gecmesi, "kapali agda/air-gapped kurulur" iddiasinin kanitidir.
+      # The core has ZERO DEPENDENCIES: installing it pulls in no external package.
+      # This step passing is the proof of the "installs on an air-gapped network" claim.
       - name: Install core (zero dependencies)
         run: pip install -e .
 

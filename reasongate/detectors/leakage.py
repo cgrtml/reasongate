@@ -1,5 +1,5 @@
-"""Sizinti dedektoru (cikti tarafi, v0): model cevabinda sir/sistem-promptu/
-PII benzeri icerik var mi? Kural tabanli, her bulguyu gerekceyle dondurur.
+"""Leakage detector (output side): does the model's reply contain secrets,
+system-prompt text, or PII? Rule based; every finding carries its reason.
 """
 from __future__ import annotations
 

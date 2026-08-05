@@ -1,13 +1,13 @@
-"""Canary-token ile sistem-promptu sizinti tespiti.
+"""System-prompt leak detection with a canary token.
 
-Sistem promptuna gizli bir 'canary' (tuzak) belirteci gomulur. Model
-bu belirteci CIKTISINDA tekrarlarsa, sistem promptunu sizdirdigi KESIN
-olarak kanitlanmis olur — regex tahminine gerek kalmaz. Bu, leakage.py'deki
-"olasi sistem promptu metni" (0.5) sezgisinin kesin/deterministik versiyonu.
+A hidden 'canary' token is planted in the system prompt. If the model repeats
+that token in its OUTPUT, a system-prompt leak is PROVEN rather than guessed —
+no regex heuristic required. This is the deterministic counterpart of the
+"possible system-prompt text" hint (0.5) in leakage.py.
 
-Kullanim:
+Usage:
     canary = generate_canary()
-    system_prompt = f"... [trace:{canary}] ..."   # modele verilir, kullaniciya degil
+    system_prompt = f"... [trace:{canary}] ..."   # given to the model, not the user
     shield = Shield(output_detectors=[CanaryLeakDetector(canary), LeakageDetector()])
 """
 from __future__ import annotations
@@ -19,7 +19,7 @@ from reasongate.types import Detection
 
 
 def generate_canary(prefix: str = "LS") -> str:
-    """Tahmin edilemez, benzersiz bir canary belirteci uretir."""
+    """Generate an unpredictable, unique canary token."""
     return f"{prefix}-{secrets.token_hex(8)}"
 
 
