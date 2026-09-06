@@ -122,6 +122,55 @@ are the ML detector's job (VoyageAI + soft tree), not the normalizer's; the norm
 role is to stop trivial character-level evasion from bypassing every downstream detector,
 and it does.
 
+## Cost per request
+
+`eval/latency.py`, offline and stdlib-only. 500 timed calls per case after 20 warm-up calls,
+`perf_counter_ns` around a single call, garbage collection left on, nearest-rank percentiles.
+Prompts are real (NotInject + the cached public set); the document buckets are those same real
+prompts concatenated to size, which is construction, not simulation, and is labeled as such in
+the tool's own output.
+
+| Path | Input | p50 | p95 | p99 |
+|---|---|---|---|---|
+| `scan_input` | chat prompt (real, 60 chars) | 0.218 ms | 0.225 ms | 0.230 ms |
+| `scan_input` | long chat prompt (real, 594 chars) | 2.236 ms | 2.298 ms | 2.350 ms |
+| `scan_input` | 2 KB document (concatenated real text) | 5.640 ms | 5.967 ms | 12.584 ms |
+| `scan_input` | 50 KB document (at the default input ceiling) | 112.393 ms | 115.329 ms | 117.794 ms |
+| `scan_context` | poisoned 2 KB document, 2 segments | 3.831 ms | 3.925 ms | 4.009 ms |
+| `ToolGate.authorize` | sensitive tool, tainted argument | 0.020 ms | 0.025 ms | 0.028 ms |
+
+Throughput, one process, 60-char prompts: **4,667 prompts/s**. The core holds no state and does
+no I/O, so throughput scales with processes (`--procs N`); it is CPU-bound pure Python, so it
+does not scale with threads.
+
+**What the numbers say.**
+
+- **A chat-sized prompt costs 0.22 ms.** Against a model-based guard at ~116 ms this is the
+  advantage the product is sold on, and it holds with room to spare.
+- **The cost is linear in input length: ~2.2 ms per KB above a 0.22 ms floor.** This is the
+  honest correction to a single average. A 50 KB document — the default `max_input_chars`
+  ceiling — costs ~112 ms, which is *the same order as the model-based guard we compare
+  against*. The crossover is at roughly 50 KB: past that size the rule core stops being the
+  cheap option, because a transformer truncates its input at 512 tokens and we do not.
+  Anyone gating RAG chunks or whole documents should budget from the per-KB figure, not
+  from the chat-prompt figure.
+- **The action gate is free and size-independent (0.02 ms).** It inspects tool arguments and
+  segment trust, not prose, so it does not pay for document length. The layer that survives
+  rewording is also the layer that costs nothing.
+- **The 2 KB p99 (12.6 ms) is 2.2× its p50.** That tail is garbage collection during the run,
+  not a pathological input; it is reported rather than tuned away, since a deployment will
+  see it too.
+
+**Where the time goes** (cProfile, 2 KB document): ~80% is `re.Pattern.search`, over ~60 regex
+executions per call — the injection pattern set is run once on the raw text and again on each
+normalized surface (spacing-collapsed, leet-folded, base64-decoded). Roughly half of those
+executions are provably redundant: the raw text is scanned by the shield and again by the
+normalization detector, and when the raw text already matched, every surface scan that follows
+is discarded by the "obfuscated only if the raw text did not fire" rule. Deduplicating the
+surfaces and short-circuiting that case is a decision-preserving optimization and is not yet
+done; the numbers above are the un-optimized ones.
+
+
 ## Independent public benchmarks
 
 Internal test sets are easy to dismiss ("you trained on your own distribution"). These
@@ -226,14 +275,20 @@ distribution before thresholding.
 
 | Guard | Recall (jailbreak / gandalf) | FPR @ NotInject ↓ | ms / prompt |
 |---|---|---:|---:|
-| ReasonGate core (offline) | 22.2% / 20.5% | **0.0%** | **0.12** |
+| ReasonGate core (offline) | 22.2% / 20.5% | **0.0%** | **0.12** * |
 | ReasonGate + ML (balanced) | 91.8% / 75.0% | 8.8% | — |
 | ProtectAI deberta-v3 | — / 100.0% | 42.8% | 116 |
 
 At the balanced operating point ReasonGate reaches **91.8% recall on semantic jailbreaks at
-8.8% over-defense**, versus ProtectAI's 42.8% over-defense and ~1000× higher latency. The win
-is the **over-defense + latency** axis. *Caveats:* gandalf is "ignore"-themed (keyword-leaning);
-ProtectAI's training set is undisclosed (possible train-overlap on its 100%).
+8.8% over-defense**, versus ProtectAI's 42.8% over-defense and ~500x higher latency *on prompts
+of this size*. The win is the **over-defense + latency** axis. *Caveats:* gandalf is
+"ignore"-themed (keyword-leaning); ProtectAI's training set is undisclosed (possible
+train-overlap on its 100%).
+
+\* *The 0.12 ms is a mean over this benchmark's prompts, which are short. The cost of the rule
+core is linear in input length, so a single average hides the case that matters for documents:
+at 50 KB the same path costs ~112 ms and the latency advantage is gone. See
+[Cost per request](#cost-per-request) above, measured per size bucket.*
 
 **Why we did not retrain.** Lowering over-defense by *retraining* on hard negatives is the
 obvious move; we tried it and report the negative result, because it changes the conclusion.

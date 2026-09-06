@@ -197,7 +197,8 @@ insufficient, and the gate's guarantees *and non-guarantees* — is written up i
 ## Benchmarks
 
 Full methodology, the harness, and the negative results are in [RESULTS.md](RESULTS.md).
-Two numbers are worth reading together.
+Three numbers are worth reading together: what it over-blocks, what it catches, and what it
+costs you per request.
 
 **Over-defense.** Many guards over-block benign prompts that merely contain trigger words
 like *ignore*, *system*, or *bypass*. On [NotInject](https://huggingface.co/datasets/leolee99/NotInject)
@@ -214,6 +215,24 @@ recovers most of it:
 
 This is recall on *obfuscated variants of patterns the core already knows*. It is not
 recall on novel phrasings — that is the 0% figure noted above.
+
+**Cost per request.** Measured with `eval/latency.py` (500 timed calls per case, p50/p95/p99,
+Apple M3 Pro):
+
+| Input | p50 | p95 |
+|---|---:|---:|
+| Chat prompt (60 chars) | 0.218 ms | 0.225 ms |
+| 2 KB document | 5.64 ms | 5.97 ms |
+| 50 KB document (the default input ceiling) | 112 ms | 115 ms |
+| `ToolGate.authorize` (a tool call, any size) | 0.020 ms | 0.025 ms |
+
+One process handles ~4,700 chat prompts/s and the core holds no state, so it scales with
+processes. The part worth knowing before you deploy it: **the input path is linear in input
+length — about 2.2 ms per KB.** At chat size that is ~500x cheaper than a model-based guard
+(ProtectAI deberta-v3, ~116 ms); at 50 KB it is the same order, because a transformer
+truncates at 512 tokens and we scan everything. Gate whole documents and you pay for them.
+The action gate does not have this property: it reads tool arguments and segment trust, not
+prose, so it is free at any size.
 
 **The ML detector (separate add-on).** An embedding-based classifier handles the
 naturally-phrased attacks the rule core cannot. These are its numbers, not the core's:
@@ -239,6 +258,7 @@ repository alone:
 # Offline, no key, no add-on — runs against this repo as-is:
 python eval/public_bench.py     # over-defense on NotInject (339 benign)
 python eval/adversarial.py      # evasion robustness of the rule core
+python eval/latency.py          # cost per request: p50/p95/p99 and throughput
 
 # Needs `pip install reasongate[eval]` and a VOYAGE_API_KEY (embeddings):
 python eval/pipeline_real.py    # train/val/test with a validation-tuned threshold
