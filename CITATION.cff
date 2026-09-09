@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "ReasonGate: an explainable security gate for LLM applications"
+authors:
+  - family-names: Temel
+    given-names: Cagri
+    orcid: "https://orcid.org/0009-0003-3359-6939"
+repository-code: "https://github.com/cgrtml/reasongate"
+abstract: "A self-hostable gate that inspects text entering and leaving a language model and returns an explainable allow, flag or block decision with a machine-readable audit record for every call."
+version: "0.2.0"
+date-released: 2026-09-09
+license: Apache-2.0
+keywords:
+  - llm security
+  - prompt injection
+  - guardrails
+  - explainable ai
+  - audit trail
