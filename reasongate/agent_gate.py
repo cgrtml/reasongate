@@ -53,14 +53,44 @@ def _norm(s: str) -> str:
 _MIN_SUBSTR_LEN = 4
 
 
+def _alnum(s: str) -> str:
+    """Keep only alphanumerics, casefolded. Catches a destination that was split or
+    punctuated inside the untrusted text ("9 9 8 1", "99-81", "9.9.8.1") — the cheap,
+    linear half of what the normalization detector does for prose."""
+    return "".join(ch for ch in str(s).casefold() if ch.isalnum())
+
+
+def _b64_payloads(text: str) -> List[str]:
+    """Decoded base64 runs inside the text, so an encoded destination still matches.
+    Reuses the core's decoder rather than a second implementation of it."""
+    try:
+        from reasongate.detectors.normalize import _decode_b64
+        return _decode_b64(text)
+    except Exception:
+        return []
+
+
 def _value_in_untrusted(value: str, text: str) -> bool:
     v = _norm(value)
     if not v:
         return False
     t = _norm(text)
     if len(v) >= _MIN_SUBSTR_LEN:
-        return v in t
-    return v in t.split()
+        if v in t:
+            return True
+    elif v in t.split():
+        return True
+
+    # The value survived the literal check. Two cheap transforms an attacker gets
+    # for free; both are linear in the text, unlike a full normalization pass.
+    va = _alnum(value)
+    if len(va) >= _MIN_SUBSTR_LEN and va in _alnum(text):
+        return True
+    for decoded in _b64_payloads(text):
+        d = _norm(decoded)
+        if len(v) >= _MIN_SUBSTR_LEN and v in d:
+            return True
+    return False
 
 
 @dataclass
@@ -74,11 +104,15 @@ class ToolPolicy:
         is checked (safe default for a sensitive tool).
     requires_authorization: a sensitive call must be explicitly authorized by the
         trusted principal even when no untrusted content is in scope.
+    returns_untrusted: the tool brings outside data in (web fetch, file read, inbox,
+        database of user-supplied records). Its result is untrusted for every later
+        call in the same GateSession, which is how taint survives more than one hop.
     """
     name: str
     sensitive: bool = False
     destination_args: Tuple[str, ...] = ()
     requires_authorization: bool = False
+    returns_untrusted: bool = False
 
 
 @dataclass
@@ -93,7 +127,9 @@ class GateDecision:
 
     def explain(self) -> str:
         triggered = [d for d in self.detections if d.triggered] or self.detections
-        head = "BLOCK" if self.action == "block" else "ALLOW"
+        # The actual verdict, not a two-way collapse: a policy review can return
+        # "flag", and printing that as ALLOW would misreport it.
+        head = str(self.action).upper()
         lines = [f"[{head}] tool '{self.tool}'"]
         for d in triggered:
             lines.append(f"  - {d.reason}")
@@ -175,12 +211,6 @@ class ToolGate:
                 "tool_gate", False, 0.0,
                 f"'{name}' is not a sensitive tool; not gated.", [])])
 
-        if authorized:
-            return GateDecision("allow", name, [Detection(
-                "tool_gate", False, 0.0,
-                f"Sensitive tool '{name}' explicitly authorized by the trusted principal.",
-                [])])
-
         # Untrusted sources in scope (a Segment is untrusted unless trust=="trusted";
         # a plain string carries no provenance, so treat it as untrusted).
         untrusted: List[Segment] = []
@@ -204,10 +234,21 @@ class ToolGate:
                     tainted.append(f"{fname}={value!r} originates from untrusted {origin}")
                     break
         if tainted:
+            # Deliberately checked BEFORE the authorization short-circuit: a trusted
+            # principal authorizes an ACTION ("email the summary to my manager"), not
+            # the argument values an injection may have chosen for it. Authorization
+            # does not launder a tainted destination.
+            extra = " Authorization covers the action, not attacker-chosen arguments." if authorized else ""
             return GateDecision("block", name, [Detection(
                 "tool_gate", True, 0.95,
                 f"Sensitive tool '{name}' called with a destination taken from untrusted "
-                f"content — tainted action, blocked regardless of wording.", tainted)])
+                f"content — tainted action, blocked regardless of wording.{extra}", tainted)])
+
+        if authorized:
+            return GateDecision("allow", name, [Detection(
+                "tool_gate", False, 0.0,
+                f"Sensitive tool '{name}' explicitly authorized by the trusted principal; "
+                f"no argument traced to untrusted content.", [])])
 
         # 2) Capability co-presence — sensitive action while untrusted content is in
         #    scope and nothing authorized it (breaks the lethal trifecta).
@@ -236,3 +277,102 @@ class ToolGate:
                       authorized: bool = False) -> List[GateDecision]:
         ctx = list(context or [])
         return [self.authorize(c, context=ctx, authorized=authorized) for c in calls]
+
+
+class GateSession:
+    """One agent run, with taint carried across tool calls.
+
+    `ToolGate` decides a single call against a fixed context. That is single-hop: it
+    catches "the account number is quoted from the poisoned document" and misses "the
+    agent fetched a page, the page named the account, and the transfer used *that*".
+    The second shape is the realistic one — untrusted data usually reaches a sensitive
+    argument through an intermediate tool result.
+
+    A session closes that by treating tool results as context with inherited trust:
+
+      * a tool declared `returns_untrusted=True` (web fetch, file read, inbox, a table
+        of user-supplied records) always produces an untrusted result;
+      * any other tool produces an untrusted result if untrusted content was in scope
+        when it ran — the conservative direction, since the model could have copied
+        anything it had read into what it passed on;
+      * otherwise the result is trusted and costs nothing later.
+
+    Usage mirrors the agent loop itself:
+
+        session = GateSession(gate, context=[user_request])
+        decision = session.authorize(call)
+        if decision.allowed:
+            session.record_result(call, run_tool(call))
+
+    Same contract as the gate: additive, opt-in, and it never raises into the caller.
+    A session that is never given results behaves exactly like the plain gate.
+    """
+
+    def __init__(self,
+                 gate: ToolGate,
+                 context: Optional[Iterable[Union[Segment, str]]] = None):
+        self.gate = gate
+        self.context: List[Segment] = []
+        for seg in context or []:
+            self.context.append(seg if isinstance(seg, Segment)
+                                else Segment(text=str(seg), source="unknown",
+                                             trust="untrusted"))
+
+    # -- context -----------------------------------------------------------
+
+    def add_context(self, segment: Union[Segment, str], *, trust: str = "untrusted",
+                    source: str = "unknown") -> Segment:
+        """Add data the agent saw. Plain strings are treated as untrusted."""
+        seg = segment if isinstance(segment, Segment) else Segment(
+            text=str(segment), source=source, trust=trust)
+        self.context.append(seg)
+        return seg
+
+    def _untrusted_in_scope(self) -> bool:
+        return any(s.trust != "trusted" for s in self.context)
+
+    # -- the loop ----------------------------------------------------------
+
+    def authorize(self, call: ToolCall, *, authorized: bool = False) -> GateDecision:
+        """Authorize one call against everything the agent has seen so far."""
+        return self.gate.authorize(call, context=self.context, authorized=authorized)
+
+    def record_result(self,
+                      call: ToolCall,
+                      result: object,
+                      *,
+                      trust: Optional[str] = None) -> Segment:
+        """Feed a tool's result back in, with its trust inherited from the run so far.
+
+        `trust` overrides the inference when the integrator knows better (a result it
+        has itself validated, or one it wants treated as untrusted regardless).
+        """
+        name = str(call.get("name", "")) if isinstance(call, dict) else str(call)
+        try:
+            policy = self.gate._policy_for(name)
+            if trust is None:
+                if policy.returns_untrusted or self._untrusted_in_scope():
+                    trust = "untrusted"
+                else:
+                    trust = "trusted"
+            seg = Segment(text=_result_text(result), source=f"tool:{name}",
+                          trust=trust, domain=None)
+            self.context.append(seg)
+            return seg
+        except Exception:
+            # A session must not break the agent either: fall back to the safe side.
+            seg = Segment(text=_result_text(result), source=f"tool:{name}",
+                          trust="untrusted", domain=None)
+            self.context.append(seg)
+            return seg
+
+
+def _result_text(result: object) -> str:
+    """Flatten a tool result to the text the gate can match a destination against."""
+    if isinstance(result, str):
+        return result
+    if isinstance(result, (list, tuple)):
+        return "\n".join(_result_text(r) for r in result)
+    if isinstance(result, dict):
+        return "\n".join(f"{k}: {_result_text(v)}" for k, v in result.items())
+    return str(result)

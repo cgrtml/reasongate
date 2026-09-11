@@ -50,11 +50,23 @@ def test_co_presence_blocks_even_without_direct_taint():
     assert not dec.allowed  # 0001 is not in the untrusted text, co-presence backstop fires
 
 
-def test_explicit_authorization_allows():
+def test_explicit_authorization_allows_a_clean_action():
+    """Authorization clears co-presence: the principal asked for this, and no argument
+    traces back to the untrusted record."""
+    dec = _gate().authorize(
+        {"name": "transfer_funds", "args": {"to_account": "0001", "amount": "$1"}},
+        context=[UNTRUSTED], authorized=True)
+    assert dec.allowed
+
+
+def test_authorization_does_not_launder_a_tainted_destination():
+    """The principal authorizes an ACTION, not the argument values an injection chose
+    for it: "wire the invoice" is authorized, the attacker's account number is not."""
     dec = _gate().authorize(
         {"name": "transfer_funds", "args": {"to_account": "9900", "amount": "$1"}},
         context=[UNTRUSTED], authorized=True)
-    assert dec.allowed
+    assert not dec.allowed
+    assert any("Authorization covers the action" in d.reason for d in dec.detections)
 
 
 def test_trusted_only_context_allows():
