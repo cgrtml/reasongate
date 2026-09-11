@@ -184,14 +184,24 @@ class NormalizationDetector(Detector):
             evidence.append("hidden/invisible character")
 
         raw_hit = self._inj.scan(text)
-        surfaces = [norm.text, *norm.variants]
         best_obf = None
-        for surf in surfaces:
-            d = self._inj.scan(surf)
-            if d.matches and not raw_hit.matches:
-                # an attack invisible in the raw text that surfaces after normalization
-                if d.score > (best_obf.score if best_obf else 0.0):
-                    best_obf = d
+        # Only an attack that is INVISIBLE in the raw text counts as obfuscated, so when
+        # the raw text already matched, every surface scan below would be discarded by
+        # the test inside the loop. Skipping them is the same decision at half the regex
+        # work — and the same reasoning drops surfaces identical to a string already
+        # scanned. The input path is the project's dominant cost (RESULTS.md, "Cost per
+        # request"): it runs this pattern set once per surface, over the whole input.
+        if not raw_hit.matches:
+            seen = {text}
+            for surf in (norm.text, *norm.variants):
+                if surf in seen:
+                    continue
+                seen.add(surf)
+                d = self._inj.scan(surf)
+                if d.matches:
+                    # an attack invisible in the raw text that surfaces after normalization
+                    if d.score > (best_obf.score if best_obf else 0.0):
+                        best_obf = d
 
         if best_obf is not None:
             score = max(score, min(1.0, best_obf.score + 0.1))  # disguise = intent bonus
