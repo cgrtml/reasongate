@@ -4,6 +4,66 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); this project aims for semantic
 versioning once it reaches 1.0.
 
+## [0.4.0]
+
+The release that follows `docs/coverage-gaps.md`: every change below is aimed at a gap
+that document measures, and the same script re-measures what moved.
+
+### Added
+- **Multi-hop taint** (`reasongate.GateSession`). The gate was single-hop: it caught a
+  destination quoted from a poisoned document and missed the realistic shape, where the
+  value reaches the sensitive argument *through* an intermediate tool result. A session
+  treats each result as context with inherited trust — a tool declared
+  `returns_untrusted` always yields untrusted output, and so does any tool that ran while
+  untrusted content was in scope — so an address that arrives via a fetched page still
+  blocks the later send.
+- **German coverage** for the override, disclosure and declared-void families. Patterns
+  were written from the **train** split of the real corpus and scored on the **held-out
+  test** split: 0.0% → 26.7% on 15 held-out attacks (28.8% over the whole corpus), with
+  NotInject over-defense unchanged at 0.0% and German benign at 0/57. One of the new
+  families is language-independent (text declaring earlier instructions void), which also
+  lifts English from 14.7% to 16.3%. See RESULTS.md → *Language coverage*; this is a
+  beachhead in one language, not multilingual support.
+- **Tool-call adapters** (`reasongate.adapters.toolcalls`): `from_anthropic`,
+  `from_openai`, `from_mcp` convert provider tool calls into what the gate authorizes,
+  and `refusal_result` hands a block back to the model as a normal tool result. Arguments
+  that fail to parse are kept under `_raw` rather than dropped — an unreadable tool call
+  is the last one that should skip the check.
+- **Policy catalog** (`reasongate.catalog`): drafts `ToolPolicy` objects from tool names
+  so a first integration takes minutes instead of classifying forty tools by hand.
+  `describe()` prints the draft for review, and says plainly that a tool whose name does
+  not say what it does is invisible to name inference.
+- **Policy seam** (`reasongate.PolicyGate`, `DeploymentPolicy`, `TermJudge`). 59% of the
+  attacks the core misses conflict with a system prompt the filter never sees. This lets a
+  deployment declare that policy and have it reviewed by a pluggable judge. **No model
+  judge ships with the package**: unconfigured, the gate returns "not evaluated" rather
+  than a clearance, and the module documents why a model judge is itself an injection
+  target and why this is advisory rather than a capability boundary.
+- `eval/misses.py` and `docs/coverage-gaps.md`: the miss inventory this release works
+  from — recall by language and by attack shape, with every example quoted from the corpus.
+
+### Changed
+- **Authorization no longer launders a tainted destination.** A tainted argument is now
+  checked *before* the authorization short-circuit: a principal authorizes an action
+  ("email the summary to my manager"), not the argument values an injection chose for it.
+  Previously `authorized=True` allowed a call whose destination came from untrusted
+  content. Behavior change for anyone passing `authorized=True`.
+- **Taint matching sees through two cheap transforms**: a destination split or punctuated
+  inside the untrusted text ("99-00-4321" vs "99004321") and one hidden in a base64 run.
+  Both are linear passes; semantic rewriting by the model is still out of reach.
+- `GateDecision.explain()` prints the actual verdict instead of collapsing everything that
+  is not a block into ALLOW — a policy review can return `flag`.
+- Rule core recall on the real corpus: 10.6% → **19.8%**, with the false-positive rate
+  unchanged at 0.5% and NotInject over-defense still 0.0%.
+
+### Performance
+- **The normalization detector no longer re-scans surfaces whose result is discarded.**
+  An attack only counts as obfuscated when the raw text did *not* match, so when it did,
+  every following surface scan was thrown away; surfaces identical to a string already
+  scanned were also scanned again. Verified decision-identical across 1,001 corpus rows
+  (same action, score, detectors and reasons) and against the evasion suite, which is
+  unchanged at 78.1% / 6.7%. This pays for most of what the German patterns cost.
+
 ## [0.3.0]
 
 ### Added

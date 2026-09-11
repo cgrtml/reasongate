@@ -10,4 +10,4 @@ __all__ = ["Shield", "Detection", "Segment", "ShieldResult",
            "AuditHook", "log_sink", "file_sink", "AUDIT_SCHEMA_VERSION",
            "ToolGate", "ToolPolicy", "GateDecision", "GateSession",
            "PolicyGate", "DeploymentPolicy", "TermJudge"]
-__version__ = "0.3.0"
+__version__ = "0.4.0"
