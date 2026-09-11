@@ -122,54 +122,92 @@ are the ML detector's job (VoyageAI + soft tree), not the normalizer's; the norm
 role is to stop trivial character-level evasion from bypassing every downstream detector,
 and it does.
 
+## Language coverage
+
+Until 0.4.0 the rule layer was English plus two Turkish patterns, and `eval/misses.py`
+measured what that cost: **0 of 73 German attacks blocked**, while their English twins in
+the same parallel corpus blocked. Not a subtlety gap — a coverage gap.
+
+German families (override, disclosure, declared-void) were added in 0.4.0. The
+methodology matters more than the number, so it is stated first: the patterns were
+written from the **train** split of `eval/data/real.json` and scored on the **held-out
+test** split, which was not read while writing them.
+
+| Split | Before | After | n |
+|---|---:|---:|---:|
+| German, held-out test | 0.0% | **26.7%** | 15 attacks |
+| German, train (development) | 0.0% | 29.3% | 58 attacks |
+| German, whole corpus | 0.0% | 28.8% | 73 attacks |
+| English, whole corpus | 14.7% | 16.3% | 190 attacks |
+
+Over-defense paid nothing for it: NotInject stays at **0.0%** (0/339), German benign
+stays at 0/57, and overall corpus FPR is unchanged at 0.5% (2/399).
+
+**Read the held-out number with its sample size.** Fifteen attacks is a small test set;
+26.7% is four of them. It is the honest figure — measured on data that did not shape the
+patterns — and it is not precise. The English lift (14.7% → 16.3%) comes from one
+language-independent family added alongside: text that declares earlier instructions void
+("all previous instructions are now irrelevant").
+
+What this does **not** support: a claim of German support, or of multilingual coverage.
+Three families in one language, scored on fifteen held-out examples, is a beachhead. Every
+other language remains measurably zero, Turkish included — there is still no Turkish
+corpus to score against, which is why no Turkish number appears anywhere in this file.
+
 ## Cost per request
 
-`eval/latency.py`, offline and stdlib-only. 500 timed calls per case after 20 warm-up calls,
-`perf_counter_ns` around a single call, garbage collection left on, nearest-rank percentiles.
-Prompts are real (NotInject + the cached public set); the document buckets are those same real
-prompts concatenated to size, which is construction, not simulation, and is labeled as such in
-the tool's own output.
+`eval/latency.py`, offline and stdlib-only. Timed calls per case after 20 warm-up calls,
+`perf_counter_ns` around a single call, garbage collection left on, nearest-rank
+percentiles. Prompts are real (NotInject + the cached public set); the document buckets
+are those same real prompts concatenated to size, which is construction, not simulation,
+and is labeled as such in the tool's own output. Apple M3 Pro, Python 3.9, 0.4.0.
 
-| Path | Input | p50 | p95 | p99 |
-|---|---|---|---|---|
-| `scan_input` | chat prompt (real, 60 chars) | 0.218 ms | 0.225 ms | 0.230 ms |
-| `scan_input` | long chat prompt (real, 594 chars) | 2.236 ms | 2.298 ms | 2.350 ms |
-| `scan_input` | 2 KB document (concatenated real text) | 5.640 ms | 5.967 ms | 12.584 ms |
-| `scan_input` | 50 KB document (at the default input ceiling) | 112.393 ms | 115.329 ms | 117.794 ms |
-| `scan_context` | poisoned 2 KB document, 2 segments | 3.831 ms | 3.925 ms | 4.009 ms |
-| `ToolGate.authorize` | sensitive tool, tainted argument | 0.020 ms | 0.025 ms | 0.028 ms |
+| Path | Input | p50 | p95 |
+|---|---|---:|---:|
+| `scan_input` | chat prompt (real, 60 chars) | 0.178 ms | 0.202 ms |
+| `scan_input` | long chat prompt (real, 594 chars) | 1.875 ms | 1.953 ms |
+| `scan_input` | 2 KB document, clean | 8.510 ms | 8.941 ms |
+| `scan_input` | 2 KB document, attack in the raw text | 3.481 ms | 3.772 ms |
+| `scan_input` | 50 KB document, clean (the input ceiling) | 210.997 ms | 215.967 ms |
+| `scan_input` | 50 KB document, attack in the raw text | 84.718 ms | 87.883 ms |
+| `scan_context` | poisoned 2 KB document, 2 segments | 3.025 ms | 3.131 ms |
+| `ToolGate.authorize` | sensitive tool, tainted argument | 0.020 ms | 0.021 ms |
 
-Throughput, one process, 60-char prompts: **4,667 prompts/s**. The core holds no state and does
-no I/O, so throughput scales with processes (`--procs N`); it is CPU-bound pure Python, so it
-does not scale with threads.
+Throughput, one process, 60-char prompts: **5,422 prompts/s**. The core holds no state and
+does no I/O, so throughput scales with processes (`--procs N`); it is CPU-bound pure
+Python, so it does not scale with threads.
 
 **What the numbers say.**
 
-- **A chat-sized prompt costs 0.22 ms.** Against a model-based guard at ~116 ms this is the
-  advantage the product is sold on, and it holds with room to spare.
-- **The cost is linear in input length: ~2.2 ms per KB above a 0.22 ms floor.** This is the
-  honest correction to a single average. A 50 KB document — the default `max_input_chars`
-  ceiling — costs ~112 ms, which is *the same order as the model-based guard we compare
-  against*. The crossover is at roughly 50 KB: past that size the rule core stops being the
-  cheap option, because a transformer truncates its input at 512 tokens and we do not.
-  Anyone gating RAG chunks or whole documents should budget from the per-KB figure, not
-  from the chat-prompt figure.
-- **The action gate is free and size-independent (0.02 ms).** It inspects tool arguments and
-  segment trust, not prose, so it does not pay for document length. The layer that survives
-  rewording is also the layer that costs nothing.
-- **The 2 KB p99 (12.6 ms) is 2.2× its p50.** That tail is garbage collection during the run,
-  not a pathological input; it is reported rather than tuned away, since a deployment will
-  see it too.
+- **A chat-sized prompt costs 0.18 ms.** Against a model-based guard at ~116 ms this is
+  the advantage the product is sold on, and it holds with room to spare.
+- **Cost is linear in input length, and the constant depends on which path the input
+  takes**: ~4.2 ms per KB for a clean document, ~1.7 ms per KB once the raw text has
+  matched. Since 0.4.0 the normalization detector skips the obfuscation surfaces when the
+  pattern layer already fired on the raw text — the same decision at a quarter of the
+  regex work — so an attack-carrying document is now the cheap case and benign traffic is
+  the expensive one. Budget from the clean figure.
+- **A 50 KB clean document costs ~211 ms**, which is *worse* than the model-based guard we
+  compare against. The crossover is around **25 KB**: past that size the rule core is not
+  the cheap option, because a transformer truncates its input at 512 tokens and we do not.
+  Anyone gating whole documents or RAG chunks should budget per KB, not per prompt.
+- **The action gate is free and size-independent (0.020 ms).** It reads tool arguments and
+  segment trust, not prose, so it does not pay for document length. The layer that
+  survives rewording is also the layer that costs nothing. The transform-aware matching
+  added in 0.4.0 runs only after a literal match fails, so it does not show up here; a
+  miss against a large untrusted context is its worst case.
 
-**Where the time goes** (cProfile, 2 KB document): ~80% is `re.Pattern.search`, over ~60 regex
-executions per call — the injection pattern set is run once on the raw text and again on each
-normalized surface (spacing-collapsed, leet-folded, base64-decoded). Roughly half of those
-executions are provably redundant: the raw text is scanned by the shield and again by the
-normalization detector, and when the raw text already matched, every surface scan that follows
-is discarded by the "obfuscated only if the raw text did not fire" rule. Deduplicating the
-surfaces and short-circuiting that case is a decision-preserving optimization and is not yet
-done; the numbers above are the un-optimized ones.
+**Against 0.3.0**, on the same machine: chat prompts got faster (0.218 → 0.178 ms) and
+throughput rose (4,667 → 5,422/s) despite roughly twice as many patterns, because of the
+skipped surfaces. Clean documents got **slower** (2.8 → 4.2 µs/char) — that is what the
+German families cost, stated rather than averaged away. Documents carrying a known attack
+got faster (112 → 85 ms at 50 KB).
 
+**Where the time goes** (cProfile, 2 KB document): ~80% is `re.Pattern.search`. The
+pattern set runs once per surface, and a clean input has four surfaces — raw,
+NFKC-normalized, spacing-collapsed, leet-folded — while a matching one now has one. The
+remaining redundancy is the raw text being scanned by both the shield and the
+normalization detector.
 
 ## Independent public benchmarks
 
@@ -287,8 +325,9 @@ train-overlap on its 100%).
 
 \* *The 0.12 ms is a mean over this benchmark's prompts, which are short. The cost of the rule
 core is linear in input length, so a single average hides the case that matters for documents:
-at 50 KB the same path costs ~112 ms and the latency advantage is gone. See
-[Cost per request](#cost-per-request) above, measured per size bucket.*
+a clean 50 KB document costs ~211 ms on 0.4.0 and the latency advantage is not just gone but
+reversed. See [Cost per request](#cost-per-request) above, measured per size bucket and per
+scan path.*
 
 **Why we did not retrain.** Lowering over-defense by *retraining* on hard negatives is the
 obvious move; we tried it and report the negative result, because it changes the conclusion.
