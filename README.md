@@ -275,6 +275,9 @@ AgentDojo's own checkers score the result:
 | Argument taint only | **12.6%** | 64.9% |
 | Strict (co-presence) | 3.4% | 41.2% |
 
+With a model in the loop (Claude Haiku 4.5, banking) the picture is sharper still: the
+model refused every injection on its own, so the gate added no security and cost 12.5
+points of utility — insurance against the case where the model's judgement fails, priced.
 Read both columns. The 35 points of utility the gate costs are legitimate destinations the
 agent read from a store — the IBAN on the bill it was asked to pay — which taint cannot tell
 from an attacker's IBAN in the same file, because it does not look at the words. What gets

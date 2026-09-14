@@ -15,8 +15,10 @@ versioning once it reaches 1.0.
   user's own tasks on clean traffic — every broken task a legitimate destination read from
   a store the attacker can also write to. Six configurations (gate off / taint / strict ×
   declared / all destinations × flat / vector-aware trust), all reported, with the three
-  shapes that survive named as limits. `--llm MODEL` runs the same gate with a model in the
-  loop (costs API calls; not part of the offline numbers).
+  shapes that survive named as limits. `--llm MODEL [--attack NAME]` runs the same gate
+  with a model in the loop; on banking, Claude Haiku 4.5 and Sonnet 4.5 refused every
+  injection with the gate off (ASR 0.0%), so the gate added no security there and cost
+  12.5 points of utility — reported as such rather than fished for a weaker model.
 - A test for the gated executor that skips when AgentDojo is not installed.
 
 ### Fixed

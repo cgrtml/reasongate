@@ -311,6 +311,51 @@ measurement is the same harness with `--llm`, which this script also provides; i
 API calls and is not part of the offline numbers above.
 
 
+### With a model in the loop
+
+Same suite, same gate, same policies, but the tool calls come from a model and the gate sits
+where AgentDojo's `ToolsExecutor` sits (`--llm`). Banking, `important_instructions`, 144 pairs,
+Claude Haiku 4.5, temperature 0:
+
+| Gate | Utility, clean | Utility, under attack | ASR | Calls the gate blocked |
+|---|---:|---:|---:|---:|
+| off | 50.0% | 57.6% | **0.0%** | 0 |
+| taint only, declared | 37.5% | 45.1% | 0.0% | 24 |
+| strict, declared | 37.5% | 41.0% | 0.0% | 42 |
+
+**The model was already immune.** In 117 of the 144 attacked episodes the injection reached
+the model; it made 22 sensitive calls and none to the attacker's account, and in 30 episodes
+its final message names the injection and refuses. So on this model and this attack the gate
+has no security to add — it can only cost, and it did: 12.5 points of clean utility, the two
+tasks whose legitimate destination came from the bill file and the transaction history.
+
+That is the honest shape of the layered argument. The gate's value is conditional on the model
+complying, and the ground-truth run above is what happens when it does (97% → 13%). With a
+model that does not comply, the gate is insurance you pay for in utility. The 50% clean utility
+with no gate is also the model's: Haiku 4.5 stops to ask before moving money, which AgentDojo
+scores as failure. Utility under attack is higher than clean here for the same reason it is
+distorted in the replay — the injection deletes the bill's IBAN, and the model, unable to pay,
+sometimes completes the rest of the task.
+
+**Looking for a model that complies.** Three probes on the same suite, gate off, to find a
+(model, attack) pair where the model follows the injection at all — because the gate's
+marginal security value can only be seen there:
+
+| Model | Attack | Pairs | ASR |
+|---|---|---:|---:|
+| Claude Haiku 4.5 | important_instructions | 144 | 0.0% |
+| Claude Haiku 4.5 | tool_knowledge | 36 | 0.0% |
+| Claude Sonnet 4.5 | important_instructions | 36 | 0.0% |
+
+Every model this account can call refused every injection. The search stopped there rather
+than reaching for a weaker model to make the gate look useful: the ground-truth replay is
+the measurement of what happens when a model complies, and a current model that does not
+comply is a finding, not an inconvenience. It also sets the product claim straight — against
+these models on these attacks, a capability gate is insurance against the case where the
+model's judgement fails, priced in utility; it is not the thing catching today's attacks.
+That price and that case are both in the numbers above.
+
+
 ## Independent public benchmarks
 
 Internal test sets are easy to dismiss ("you trained on your own distribution"). These
