@@ -38,6 +38,11 @@ because a benchmark that lets the tool under test pick its own configuration is 
   python eval/agentdojo_gate.py --suite banking --json out.json
 
 Needs `pip install agentdojo` (Python 3.10+). No API key, no network, no model.
+
+The `--llm MODEL` mode runs the same gate with a model in the loop and needs
+ANTHROPIC_API_KEY plus `pip install "anthropic<1"`: AgentDojo 0.1.35 still passes
+`temperature=` to `messages.stream()`, which the 1.x SDK removed (TypeError). Runs are
+logged under `--logdir` and resume from there, so a killed run costs nothing twice.
 """
 from __future__ import annotations
 
@@ -452,16 +457,17 @@ def build_llm_pipeline(model: str, suite_name: str, tool_names: Sequence[str],
 
 
 def run_llm(model: str, suite_name: str, mode: str, scope: str, logdir: Optional[str],
-            user_tasks: Optional[List[str]], injection_tasks: Optional[List[str]]) -> dict:
+            user_tasks: Optional[List[str]], injection_tasks: Optional[List[str]],
+            attack_name: str = ATTACK) -> dict:
     from pathlib import Path
     from agentdojo.benchmark import benchmark_suite_with_injections, benchmark_suite_without_injections
     from agentdojo.logging import OutputLogger
 
     suite = get_suites(BENCHMARK_VERSION)[suite_name]
     pipeline, executor = build_llm_pipeline(model, suite_name, [t.name for t in suite.tools], mode, scope)
-    attack = load_attack(ATTACK, suite, pipeline)
+    attack = load_attack(attack_name, suite, pipeline)
     ld = Path(logdir) if logdir else None
-    with OutputLogger(str(ld) if ld else None, live=False):
+    with OutputLogger(str(ld) if ld else None, live=None):   # live expects a rich Live, not a bool
         clean = benchmark_suite_without_injections(pipeline, suite, ld, force_rerun=False,
                                                    user_tasks=user_tasks, benchmark_version=BENCHMARK_VERSION)
         res = benchmark_suite_with_injections(pipeline, suite, attack, ld, force_rerun=False,
@@ -469,7 +475,7 @@ def run_llm(model: str, suite_name: str, mode: str, scope: str, logdir: Optional
                                               benchmark_version=BENCHMARK_VERSION)
     u_clean = clean["utility_results"]; u = res["utility_results"]; s = res["security_results"]
     blocked = sum(1 for _, d in getattr(executor, "decisions", []) if not d.allowed)
-    return {"model": model, "suite": suite_name, "mode": mode, "scope": scope,
+    return {"model": model, "suite": suite_name, "mode": mode, "scope": scope, "attack": attack_name,
             "utility_clean": sum(u_clean.values()) / max(1, len(u_clean)),
             "utility_under_attack": sum(u.values()) / max(1, len(u)),
             "asr": sum(s.values()) / max(1, len(s)), "pairs": len(s), "blocked_calls": blocked}
@@ -484,9 +490,11 @@ if __name__ == "__main__" and "--llm" in sys.argv:
     ap.add_argument("--logdir", default=None, help="AgentDojo run logs; enables resume")
     ap.add_argument("--user-tasks", default=None, help="comma-separated subset")
     ap.add_argument("--injection-tasks", default=None, help="comma-separated subset")
+    ap.add_argument("--attack", default=ATTACK, help="AgentDojo attack name (default important_instructions)")
     a = ap.parse_args()
     r = run_llm(a.llm, a.suite, a.mode, a.scope, a.logdir,
                 a.user_tasks.split(",") if a.user_tasks else None,
-                a.injection_tasks.split(",") if a.injection_tasks else None)
+                a.injection_tasks.split(",") if a.injection_tasks else None,
+                attack_name=a.attack)
     print(json.dumps(r, indent=1))
     raise SystemExit(0)
