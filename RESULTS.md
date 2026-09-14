@@ -209,6 +209,108 @@ NFKC-normalized, spacing-collapsed, leet-folded — while a matching one now has
 remaining redundancy is the raw text being scanned by both the shield and the
 normalization detector.
 
+## The gate on AgentDojo
+
+Everything above measures detectors on prompts. This measures the layer the product rests
+on — the action gate — on the benchmark built for exactly this threat: [AgentDojo](https://github.com/ethz-spylab/agentdojo)
+(Debenedetti et al., 2024), four tool-using agent suites attacked through the data the
+agent reads. `eval/agentdojo_gate.py`; needs `pip install agentdojo` and no API key.
+
+**Method.** No model. AgentDojo's own ground-truth tool sequences are replayed through the
+gate: for each (user task, injection task) pair the "agent" does what the user asked and
+then does what the injection asked — the fully hijacked case — and AgentDojo's own
+checkers score the outcome (utility: the user's task got done; ASR: the injection's goal
+was achieved). This isolates the gate from any model's judgement. A model run sits on top
+of it: a model may refuse an injection (ASR lower), and may reword an argument the gate
+matched literally (ASR higher) — it cannot change what the gate does with the calls it is
+given.
+
+Policies are declared by hand (`POLICIES` in the script) and the name-inference catalog is
+scored against them rather than allowed to configure the benchmark: of 24 hand-declared
+sensitive tools it found 23 with no false positives — after this benchmark exposed three
+bugs in it (an underscored verb that could never match, four missing verbs, a read tool
+flagged sensitive for a noun later in its name). Two trust maps: **flat** — every read-shaped
+tool returns untrusted data, the gate's default; **vectors** — only tools whose output an
+injection can actually reach, found mechanically by placing a canary in every injection
+vector the suite defines and seeing which tool results carry it. Two destination scopes:
+**declared** (the arguments listed per tool) and **all** (every argument, the gate's default
+when nothing is declared).
+
+**Result — 609 (user task, injection task) pairs across the four suites, attack
+`important_instructions`, no model in the loop:**
+
+| Gate | Destinations | Trust map | Utility, clean traffic | Attack success (ASR) |
+|---|---|---|---:|---:|
+| off | — | — | 100.0% | 97.4% |
+| taint only | declared | flat | **64.9%** | **12.6%** |
+| taint only | all | flat | 57.7% | 10.0% |
+| taint only | declared | vectors | 66.0% | 12.6% |
+| strict | declared | flat | 41.2% | 3.4% |
+| strict | declared | vectors | 41.2% | 3.4% |
+
+Per suite, the taint-only / declared / flat row (the configuration a first integration
+would run):
+
+| Suite | Pairs | ASR, no gate | ASR, gate | Utility clean, gate | User tasks the gate breaks |
+|---|---:|---:|---:|---:|---|
+| banking | 144 | 97.9% | **0.0%** | 62.5% | 6 of 16 |
+| slack | 105 | 100.0% | 20.0% | 23.8% | 16 of 21 |
+| travel | 120 | 96.7% | 13.3% | 95.0% | 1 of 20 |
+| workspace | 240 | 96.2% | 16.7% | 72.5% | 11 of 40 |
+
+**Read with three caveats, all of which are in the script's own output.**
+
+- *Utility under attack is not a clean number.* AgentDojo's injection replaces the
+  placeholder text it lands in — the bill loses its IBAN, the review loses its body — so
+  some user tasks become impossible or, occasionally, easier. The clean-traffic utility is
+  the honest cost of the gate; the under-attack column is reported because the benchmark
+  reports it.
+- *9 of 35 injection tasks are excluded* (8 workspace, 1 travel) because their ground
+  truth is empty in the default environment — nothing runs, so they "fail" in every mode
+  and would credit the gate with stopping nothing. The denominator is the 26 that replay.
+- *The floor is not 100% even with no gate*: a replayed injection can still miss its own
+  goal when the user's preceding actions changed the state it depends on. The gate's
+  number is relative to that floor.
+
+**What the numbers say.**
+
+- **Argument taint alone, with no model judgement, takes a fully hijacked agent from 97.4%
+  attack success to 12.6%** — and to 10.0% when every argument is treated as a
+  destination. This is the phrasing-independent claim, measured: the injection's wording
+  never enters into it, only where its destination came from. Strict mode (nothing
+  authorized, co-presence blocks) reaches 3.4%.
+- **It costs 35% of the user's own tasks on clean traffic**, and the reason is the same
+  mechanism. Every broken task is a legitimate destination the agent read from a store:
+  the IBAN on the bill it was asked to pay, the friend's account in the transaction
+  history, the channel name from the channel list, the address from the contact search.
+  Taint cannot tell those from an attacker's IBAN in the same file, because it does not
+  look at the words — that is the whole point of it, and this is the price.
+- **A finer trust map does not buy it back here.** Marking only the tools an injection can
+  actually reach as untrusted (found mechanically, by canary) moves clean utility from 64.9%
+  to 66.0%. In AgentDojo the attacker writes into the same stores the user's legitimate
+  destinations come from, so nearly every read tool is both. That makes the cost inherent
+  to this threat model, not to the configuration. In a deployment where the attacker's
+  channel (inbox, web) and the user's directory (contacts, channel list) are separate
+  stores, the same map should recover most of the utility — that is an expectation, not a
+  measurement, and it is the first thing a pilot would check.
+- **What gets through is three shapes, each a documented limit of a capability gate.**
+  (1) *Goals that are reads*: slack's "visit this URL" injection succeeds 100% of the time,
+  because the gate constrains effects and `get_webpage` has none it can see — 21 of the 77
+  surviving pairs. (2) *Destinations that are looked up rather than quoted*: workspace's
+  "delete the largest file" resolves to a file id from a listing; the id never appears in
+  the injection text, so literal taint cannot see it — 40 pairs. Strict mode blocks it by
+  co-presence. (3) *Harm in a non-destination field*: travel's "create a calendar event
+  titled X" carries its payload in the title; declared scope misses it (80%), `all` scope
+  catches it (0%) at a utility cost of 20 points on that suite.
+- **The catalog held up**: 23 of 24 hand-declared sensitive tools inferred from names alone,
+  no false positives, after this benchmark exposed and fixed three bugs in it.
+
+What a model adds sits on top of this. A model can refuse an injection the gate would have
+had to catch, and it can reword a destination the gate matched literally. The next
+measurement is the same harness with `--llm`, which this script also provides; it costs
+API calls and is not part of the offline numbers above.
+
+
 ## Independent public benchmarks
 
 Internal test sets are easy to dismiss ("you trained on your own distribution"). These

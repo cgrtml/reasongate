@@ -261,6 +261,27 @@ an allow, because an unchecked request must never look like a cleared one. A mod
 is also itself an injection target, and this is advisory — the layer that cannot be argued
 with is `ToolGate`, which constrains what the agent may *do*.
 
+### Measured on AgentDojo
+
+The gate has a number of its own now, on the benchmark built for this threat
+([AgentDojo](https://github.com/ethz-spylab/agentdojo): four tool-using agent suites,
+attacked through the data the agent reads). No model in the loop — the benchmark's own
+ground-truth tool sequences are replayed through the gate as a fully hijacked agent, and
+AgentDojo's own checkers score the result:
+
+| | Attack success | Utility on clean traffic |
+|---|---:|---:|
+| No gate | 97.4% | 100% |
+| Argument taint only | **12.6%** | 64.9% |
+| Strict (co-presence) | 3.4% | 41.2% |
+
+Read both columns. The 35 points of utility the gate costs are legitimate destinations the
+agent read from a store — the IBAN on the bill it was asked to pay — which taint cannot tell
+from an attacker's IBAN in the same file, because it does not look at the words. What gets
+through is three documented shapes: goals that are reads, destinations looked up rather
+than quoted, and harm in a non-destination field. Method, per-suite numbers, and caveats:
+[RESULTS.md → The gate on AgentDojo](RESULTS.md#the-gate-on-agentdojo).
+
 The reasoning behind this layer — the threat model, why text-detection is structurally
 insufficient, and the gate's guarantees *and non-guarantees* — is written up in
 [docs/threat-model.md](docs/threat-model.md). What it still misses, measured and quoted
@@ -339,6 +360,9 @@ python eval/validate.py         # leakage check, trivial baselines, 5-fold CV, 5
 # Needs the enterprise add-on (the trained model moved there in 0.2.0):
 python eval/ood_test.py         # out-of-distribution generalization
 python eval/head_to_head.py     # vs ProtectAI deberta-v3
+
+# Needs `pip install agentdojo` (Python 3.10+), no key — the action gate on AgentDojo:
+python eval/agentdojo_gate.py   # ASR and utility, gate off / taint / strict
 ```
 
 The scripts in the third group exit with an explanation rather than a traceback when the

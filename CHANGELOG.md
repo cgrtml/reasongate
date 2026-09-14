@@ -4,6 +4,33 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); this project aims for semantic
 versioning once it reaches 1.0.
 
+## [Unreleased]
+
+### Added
+- **The action gate measured on AgentDojo** (`eval/agentdojo_gate.py`, RESULTS.md → *The
+  gate on AgentDojo*). The first number about the layer the product rests on: the
+  benchmark's ground-truth tool sequences replayed through the gate as a fully hijacked
+  agent, scored by AgentDojo's own checkers, no model in the loop. Across 609 pairs,
+  argument taint alone takes attack success from 97.4% to **12.6%** and costs **35%** of the
+  user's own tasks on clean traffic — every broken task a legitimate destination read from
+  a store the attacker can also write to. Six configurations (gate off / taint / strict ×
+  declared / all destinations × flat / vector-aware trust), all reported, with the three
+  shapes that survive named as limits. `--llm MODEL` runs the same gate with a model in the
+  loop (costs API calls; not part of the offline numbers).
+- A test for the gated executor that skips when AgentDojo is not installed.
+
+### Fixed
+- **List-valued destinations were never matched.** `recipients=[...]` was stringified and
+  compared as `"['a@b']"`, so a tainted address inside a list passed. Each scalar inside a
+  list or mapping is now matched on its own.
+- **Catalog**: `add_user` in the sensitive pattern could never match because names are
+  split on underscores before matching; `reserve`, `cancel`, `reschedule` and `append` were
+  missing; a read tool with a sensitive noun later in its name (`search_contacts_by_email`)
+  was flagged sensitive. Scored against AgentDojo's 74 tools: 23 of 24 hand-declared
+  sensitive tools found, no false positives (was 15 of 24 with one false positive).
+- `python eval/adversarial.py` runs from the repository root as the README says; it needed
+  `PYTHONPATH=.` before.
+
 ## [0.4.0]
 
 The release that follows `docs/coverage-gaps.md`: every change below is aimed at a gap

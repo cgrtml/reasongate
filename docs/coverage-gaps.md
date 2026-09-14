@@ -165,6 +165,14 @@ nor quietly accepted as failure.
   drafts policies from tool names so the first integration is minutes rather than an
   afternoon, but a tool named `process_request` that wires money is invisible to name
   inference, and the catalog says so in its own output.
+- **The gate's own cost and limits are now measured, not asserted** (RESULTS.md → *The
+  gate on AgentDojo*). Taint alone: attack success 97.4% → 12.6%, at 35% of the user's own
+  tasks on clean traffic — every one a legitimate destination read from a store the
+  attacker also writes to. Three shapes get through and are limits, not bugs: goals that
+  are *reads* (visit a URL — the gate constrains effects), destinations *looked up* rather
+  than quoted (delete "the largest file" → an id from a listing, invisible to literal
+  taint), and harm in a *non-destination* field (a calendar title), which the `all`
+  destination scope catches at a further utility cost.
 - **Capability proves the action, never the intent.** The gate can say a transfer's
   destination came from an untrusted document. It cannot say whether the user wanted it.
 - **Multi-agent hand-off is out of scope.** Trust is tracked within one session's calls,
