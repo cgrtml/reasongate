@@ -10,13 +10,19 @@ these evasions:
   leetspeak, letter-spacing, dot-breaking, homoglyphs (Cyrillic), zero-width,
   base64 wrapping, HTML-comment wrapping (indirect).
 
-Run:  PYTHONPATH=. python eval/adversarial.py
+Run:  python eval/adversarial.py
 Fully offline (no embedding/API) — it measures the rule + normalization layer only.
 """
 from __future__ import annotations
 
 import base64
+import os
+import sys
 from typing import Callable, Dict, List
+
+# Runnable as `python eval/adversarial.py` from the repository root, as the README says,
+# not only as `python -m eval.adversarial`.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from eval.dataset import ATTACKS, BENIGN
 from eval import metrics

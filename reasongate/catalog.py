@@ -34,7 +34,8 @@ _SENSITIVE = (
     r"delete|remove|destroy|drop|truncate|purge|revoke|disable|"
     r"exec|execute|run|shell|bash|command|eval|script|deploy|release|merge|push|"
     r"write|create|update|upsert|insert|modify|rename|move|copy|upload|"
-    r"grant|invite|add_user|add_member|approve|sign|order|book|schedule|call"
+    r"grant|invite|add user|add member|add participant|approve|sign|order|book|"
+    r"reserve|reservation|schedule|reschedule|cancel|append|call"
 )
 
 # Tools that bring outside data in. Their results are untrusted for every later call
@@ -73,8 +74,14 @@ def infer_policy(name: str, *, known_args: Sequence[str] = ()) -> ToolPolicy:
     and the noisier one.
     """
     words = _words(name)
-    sensitive = bool(_SENSITIVE_RE.search(words))
     ingest = bool(_INGEST_RE.search(words))
+    sensitive = bool(_SENSITIVE_RE.search(words))
+    # A name that LEADS with a read verb is a read tool even if a sensitive noun
+    # appears later ("search_contacts_by_email", "get_sent_emails"). Only the
+    # leading verb decides; "update_from_url" still counts as both.
+    first = words.split()[0] if words.split() else ""
+    if sensitive and _INGEST_RE.search(f" {first} ") and not _SENSITIVE_RE.search(f" {first} "):
+        sensitive = False
     # A tool that both reads and writes ("update_from_url") is treated as both: its
     # result is untrusted and its own call is gated.
     dests: List[str] = []

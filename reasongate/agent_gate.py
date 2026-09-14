@@ -70,6 +70,22 @@ def _b64_payloads(text: str) -> List[str]:
         return []
 
 
+def _scalars(value: object) -> List[str]:
+    """Every scalar inside an argument value, as strings: a list of recipients, a
+    dict of fields, or the value itself."""
+    if isinstance(value, dict):
+        out: List[str] = []
+        for v in value.values():
+            out.extend(_scalars(v))
+        return out
+    if isinstance(value, (list, tuple, set)):
+        out = []
+        for v in value:
+            out.extend(_scalars(v))
+        return out
+    return [str(value)]
+
+
 def _value_in_untrusted(value: str, text: str) -> bool:
     v = _norm(value)
     if not v:
@@ -228,10 +244,18 @@ class ToolGate:
             value = args.get(fname)
             if value is None:
                 continue
-            for seg in untrusted:
-                if _value_in_untrusted(str(value), seg.text):
-                    origin = seg.source + (f":{seg.domain}" if seg.domain else "")
-                    tainted.append(f"{fname}={value!r} originates from untrusted {origin}")
+            # A destination is often a list ("recipients": [...]) or a mapping; each
+            # scalar inside it is a destination of its own. Stringifying the container
+            # would compare "['a@b']" against the text and never match.
+            for scalar in _scalars(value):
+                hit = False
+                for seg in untrusted:
+                    if _value_in_untrusted(scalar, seg.text):
+                        origin = seg.source + (f":{seg.domain}" if seg.domain else "")
+                        tainted.append(f"{fname}={scalar!r} originates from untrusted {origin}")
+                        hit = True
+                        break
+                if hit:
                     break
         if tainted:
             # Deliberately checked BEFORE the authorization short-circuit: a trusted
