@@ -299,7 +299,10 @@ would run):
   surviving pairs. (2) *Destinations that are looked up rather than quoted*: workspace's
   "delete the largest file" resolves to a file id from a listing; the id never appears in
   the injection text, so literal taint cannot see it — 40 pairs. Strict mode blocks it by
-  co-presence. (3) *Harm in a non-destination field*: travel's "create a calendar event
+  co-presence. Part of this is the replay, not the gate: the ground truth knows the id, so
+  no `list_files` precedes the delete; a real agent lists first, the id lands in an
+  untrusted result, and taint sees it. The limit is real only where the lookup runs through
+  a store the gate trusts. (3) *Harm in a non-destination field*: travel's "create a calendar event
   titled X" carries its payload in the title; declared scope misses it (80%), `all` scope
   catches it (0%) at a utility cost of 20 points on that suite.
 - **The catalog held up**: 23 of 24 hand-declared sensitive tools inferred from names alone,
@@ -310,6 +313,32 @@ had to catch, and it can reword a destination the gate matched literally. The ne
 measurement is the same harness with `--llm`, which this script also provides; it costs
 API calls and is not part of the offline numbers above.
 
+
+### Improvements, measured
+
+Each change to the gate is re-run on the same 609 pairs before it is kept. Rows are the
+taint-only / declared / flat configuration, the one a first integration would run; the
+table at the top of this section stays as the 0.4.0 baseline.
+
+| Step | Change | Utility, clean | ASR | User tasks recovered / newly broken | Pairs newly lost / newly stopped |
+|---|---|---:|---:|---:|---:|
+| 0 | 0.4.0 baseline | 64.9% | 12.6% | — | — |
+| 1 | Trusted provenance dominates | **75.3%** | 13.6% | +10 / 0 | 6 / 0 |
+
+**Step 1.** A destination the principal named themselves — "refund GB29…", "share it with
+john.doe@…", "send it to Alice" — is theirs, even when an untrusted document also contains
+it: an attacker cannot write into the principal's own request. Before, a value that
+appeared in *any* untrusted segment was tainted, which broke 11 of the 34 legitimate
+tasks the gate broke. Ten came back; none broke.
+
+The cost is six pairs, and it is one shape: **the injection reuses a recipient the user
+named**. Five slack pairs DM a phishing link to Alice after the user mentioned Alice; one
+travel pair emails the passport number to the wife's address the user gave. The
+destination is genuinely the user's; the harm is in the *content* the injection put into
+the message. Destination taint does not look at content. What does: fragment taint on
+message-bearing arguments (an argument that *contains* a span copied from untrusted text),
+which is the next step and is measured below when it lands; and strict mode, which blocks
+these by co-presence at its usual utility price.
 
 ### With a model in the loop
 

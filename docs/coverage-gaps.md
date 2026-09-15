@@ -170,9 +170,12 @@ nor quietly accepted as failure.
   tasks on clean traffic — every one a legitimate destination read from a store the
   attacker also writes to. Three shapes get through and are limits, not bugs: goals that
   are *reads* (visit a URL — the gate constrains effects), destinations *looked up* rather
-  than quoted (delete "the largest file" → an id from a listing, invisible to literal
-  taint), and harm in a *non-destination* field (a calendar title), which the `all`
-  destination scope catches at a further utility cost.
+  than quoted (delete "the largest file" → an id from a listing), and harm in a
+  *non-destination* field (a calendar title), which the `all` destination scope catches
+  at a further utility cost. The second shape is partly an artefact of the replay: the
+  ground truth "knows" the file id, so no listing precedes the delete. A real agent lists
+  files first, the id lands in an untrusted result, and taint sees it. It remains a real
+  limit wherever the lookup goes through a store the gate trusts.
 - **Capability proves the action, never the intent.** The gate can say a transfer's
   destination came from an untrusted document. It cannot say whether the user wanted it.
 - **Multi-agent hand-off is out of scope.** Trust is tracked within one session's calls,

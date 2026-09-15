@@ -21,6 +21,15 @@ versioning once it reaches 1.0.
   12.5 points of utility — reported as such rather than fished for a weaker model.
 - A test for the gated executor that skips when AgentDojo is not installed.
 
+### Changed
+- **Trusted provenance dominates in the action gate.** A destination value that appears in
+  trusted context — the principal's own request — is user-designated even when an untrusted
+  segment also contains it; taint now applies only to values found *solely* in untrusted
+  data. On AgentDojo (609 pairs, taint-only): clean utility 64.9% → 75.3%, ten legitimate
+  tasks recovered, none broken; ASR 12.6% → 13.6%, six pairs where the injection reuses a
+  recipient the user named and puts its payload in the message body — the shape fragment
+  taint is for. Evidence string: `named in trusted context`.
+
 ### Fixed
 - **List-valued destinations were never matched.** `recipients=[...]` was stringified and
   compared as `"['a@b']"`, so a tainted address inside a list passed. Each scalar inside a

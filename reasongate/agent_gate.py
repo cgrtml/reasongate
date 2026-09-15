@@ -228,18 +228,20 @@ class ToolGate:
                 f"'{name}' is not a sensitive tool; not gated.", [])])
 
         # Untrusted sources in scope (a Segment is untrusted unless trust=="trusted";
-        # a plain string carries no provenance, so treat it as untrusted).
+        # a plain string carries no provenance, so treat it as untrusted). Trusted
+        # segments are kept too: a value the principal wrote themselves is theirs.
         untrusted: List[Segment] = []
+        trusted: List[Segment] = []
         for seg in context:
             if isinstance(seg, Segment):
-                if seg.trust != "trusted":
-                    untrusted.append(seg)
+                (trusted if seg.trust == "trusted" else untrusted).append(seg)
             elif isinstance(seg, str):
                 untrusted.append(Segment(text=seg, source="unknown", trust="untrusted"))
 
         # 1) Argument taint — a destination value quoted from untrusted content.
         fields = policy.destination_args or tuple(args.keys())
         tainted: List[str] = []
+        designated: List[str] = []
         for fname in fields:
             value = args.get(fname)
             if value is None:
@@ -248,6 +250,14 @@ class ToolGate:
             # scalar inside it is a destination of its own. Stringifying the container
             # would compare "['a@b']" against the text and never match.
             for scalar in _scalars(value):
+                # Trusted provenance dominates. If the principal named this value
+                # themselves ("refund GB29...", "share it with john@..."), it is theirs
+                # even when an untrusted document also contains it — an attacker cannot
+                # write into the principal's own request. Measured on AgentDojo, this
+                # was 11 of the 34 legitimate tasks the gate used to break.
+                if any(_value_in_untrusted(scalar, seg.text) for seg in trusted):
+                    designated.append(f"{fname}={scalar!r} named in trusted context")
+                    continue
                 hit = False
                 for seg in untrusted:
                     if _value_in_untrusted(scalar, seg.text):
@@ -272,7 +282,7 @@ class ToolGate:
             return GateDecision("allow", name, [Detection(
                 "tool_gate", False, 0.0,
                 f"Sensitive tool '{name}' explicitly authorized by the trusted principal; "
-                f"no argument traced to untrusted content.", [])])
+                f"no argument traced to untrusted content.", designated)])
 
         # 2) Capability co-presence — sensitive action while untrusted content is in
         #    scope and nothing authorized it (breaks the lethal trifecta).

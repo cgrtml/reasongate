@@ -278,6 +278,10 @@ AgentDojo's own checkers score the result:
 With a model in the loop (Claude Haiku 4.5, banking) the picture is sharper still: the
 model refused every injection on its own, so the gate added no security and cost 12.5
 points of utility — insurance against the case where the model's judgement fails, priced.
+Every change to the gate is re-measured on the same pairs and logged in RESULTS.md
+(*Improvements, measured*); the first one — a value the user named themselves is theirs even
+if an untrusted document also contains it — took clean utility from 64.9% to 75.3% at one
+point of ASR, and the table there says which six pairs paid for it.
 Read both columns. The 35 points of utility the gate costs are legitimate destinations the
 agent read from a store — the IBAN on the bill it was asked to pay — which taint cannot tell
 from an attacker's IBAN in the same file, because it does not look at the words. What gets
