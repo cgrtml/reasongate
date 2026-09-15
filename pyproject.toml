@@ -23,6 +23,7 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
+judge = ["anthropic>=1"]
 # NOTE: the ML detector + trained model + provenance now ship in the separate
 # "reasongate-enterprise" add-on (installing it auto-enables them via plugins).
 # These extras only cover the OPEN parts: reproducing the public benchmarks and

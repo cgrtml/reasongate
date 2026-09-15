@@ -450,6 +450,52 @@ model's judgement fails, priced in utility; it is not the thing catching today's
 That price and that case are both in the numbers above.
 
 
+## The policy judge
+
+`docs/coverage-gaps.md` measured that 59% of what the rule core misses in the real corpus
+carries no attack marker at all: "write a manifesto for the re-election of X" is an
+ordinary sentence, an attack only because the deployment — a newspaper's assistant —
+forbids partisan advocacy. That conflict lives in a policy the filter never sees.
+`PolicyGate` is the seam that lets a deployment declare it; `reasongate.judges.AnthropicJudge`
+is the reference judge; `eval/policy_judge.py` is this measurement.
+
+**Method.** The policy is written from the corpus's documented setting (deepset collected
+the set for a German newspaper's chatbot), in an operator's words, before looking at any
+attack: five rules — no partisan advocacy, no defamation, no overriding or revealing
+instructions, no personas, and no content unrelated to readers' news questions. The
+judge gets the policy as its system instruction and each prompt as data inside `<request>`
+tags; it answers under a JSON schema with a rule number. Every attack the 0.4.0 core
+misses (211) and every benign prompt (399) is reviewed. A flag is counted as caught.
+
+| Judge | Policy | Recall on the core's 211 misses | of which "no marker" (125) | Benign flagged (399) | Core + judge: attacks caught / benign flagged |
+|---|---|---:|---:|---:|---:|
+| Opus 5 | 5 rules | **92.4%** | 88.0% | 25.3% | 93.9% / 25.8% |
+| Haiku 4.5 | 5 rules | 88.2% | 84.0% | 20.1% | 90.5% / 20.6% |
+| Opus 5 | rules 1–4 (rule 5 dropped) | 85.3% | 76.8% | 3.8% | 88.2% / 4.3% |
+| Haiku 4.5 | rules 1–4 (rule 5 dropped) | 77.3% | 69.6% | 6.3% | 81.7% / 6.8% |
+
+**What the numbers say.**
+
+- **The judge reaches the bucket nothing else could.** On the 125 attacks with no marker
+  at all — the "conflict with a policy the filter never sees" — Opus 5 flags 88.0% and
+  Haiku 4.5 84.0%. Persona framing, which the rule core catches at 0 of 27, goes to 96.3%
+  and 92.6%. Combined with the core, attacks caught go from 19.8% to 93.9% (Opus) / 90.5%
+  (Haiku).
+- **The false positives are a policy-authoring error, and the judge says which one.** With
+  all five rules, 25.3% (Opus) / 20.1% (Haiku) of benign prompts are flagged — 82 of 101 (Opus) and 55 of 80 (Haiku)
+  of them under rule 5, "content unrelated to the news": restaurants in Munich, vaccinations
+  for a trip, a new gym. The corpus labels those benign because the deployment answered
+  them, so rule 5 is stricter than the deployment it describes. That is exactly the
+  iteration an operator does with the rule number in the audit record: with rule 5 dropped, Opus 5 flags 3.8% of benign prompts and still reaches 85.3% of the core's misses (76.8% of the no-marker bucket, 92.6% of persona framing); Haiku 4.5 goes to 6.3% and 77.3% (69.6% no-marker). Combined with the core: 88.2% of attacks caught at 4.3% benign flagged on Opus, 81.7% at 6.8% on Haiku. The rule that cost the false positives also carried real attacks — the essays-on-demand and code requests — so dropping it is a trade, not a fix, and both rows stay in the table.
+- **This is a flag, not a block, and a judge is not a boundary.** `PolicyGate` flags by
+  default; a deployment that blocks on it accepts the false-positive rate above as its
+  over-defense. The judge reads the attacker's text and can be argued with; the numbers
+  here are for `important_instructions`-free prose from a public set, not for text written
+  to defeat this judge. `ToolGate` remains the layer that constrains what happens.
+- **Cost.** One request per review with the policy prefix cached: on this corpus the whole
+  measurement — 610 reviews — cost about $2 on Opus 5 and well under $1 on Haiku 4.5.
+  Opus 5 left 2 of 610 prompts unevaluated (1× RuntimeError, 1× JSONDecodeError), reported as not evaluated rather than allowed; Haiku 4.5 none.
+
 ## Independent public benchmarks
 
 Internal test sets are easy to dismiss ("you trained on your own distribution"). These

@@ -131,10 +131,14 @@ The attack is the *conflict with the policy*, and the policy is not in the input
 
 No amount of pattern work, and no classifier trained on prompt text alone, closes this
 bucket. It can only be closed by comparing the request against the deployment's own
-policy, or by constraining what the model may *do* with the answer. 0.4.0 ships the first
-as a seam (`PolicyGate` — which needs a judge the package deliberately does not provide,
-and whose limits are written into the module) and the second as the thing that actually
-holds (`ToolGate`). This is 59% of the real misses, not a design preference.
+policy, or by constraining what the model may *do* with the answer. 0.4.0 shipped the
+first as a seam (`PolicyGate`) and the second as the thing that actually holds
+(`ToolGate`). The seam now has a measured reference judge (RESULTS.md → *The policy
+judge*): given the deployment's policy in an operator's words, Opus 5 reaches 76.8% of
+this bucket at 3.8% of benign prompts flagged (85.3% of all the core's misses; with a
+stricter fifth rule 88.0% at 25.3%), Haiku 4.5 69.6% at 6.3%. That is a flag from a
+model that reads the attacker's text, not a boundary — but it is the first number for
+the 59%, and it says the bucket is a policy problem, not a detection problem.
 
 ## Gap 6: honesty in the other direction — 21 misses (10%) look mislabeled
 

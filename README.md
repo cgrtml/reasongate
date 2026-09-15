@@ -258,11 +258,17 @@ policy = DeploymentPolicy(name="newsroom assistant",
 verdict = PolicyGate(policy, judge=my_judge).review(user_request)
 ```
 
-**No model judge ships with this package.** Deciding whether a sentence conflicts with a
-prose policy needs a model; unconfigured, the gate returns *"not evaluated"* rather than
-an allow, because an unchecked request must never look like a cleared one. A model judge
-is also itself an injection target, and this is advisory — the layer that cannot be argued
-with is `ToolGate`, which constrains what the agent may *do*.
+**No judge is the default.** Deciding whether a sentence conflicts with a prose policy
+needs a model; unconfigured, the gate returns *"not evaluated"* rather than an allow,
+because an unchecked request must never look like a cleared one. A reference judge on the
+Anthropic API is installable separately — `pip install "reasongate[judge]"`, then
+`judge=AnthropicJudge()` from `reasongate.judges` — with the policy as its instruction,
+the request as data, a schema-bound verdict, and a refusal reported as not evaluated.
+On the real corpus it reaches 85.3% of the attacks the rule core misses at 3.8% of benign
+prompts flagged (Opus 5, four rules) — the 59% no input filter can see, measured in
+[RESULTS.md](RESULTS.md#the-policy-judge). A model
+judge is still itself an injection target, and this is advisory — the layer that cannot
+be argued with is `ToolGate`, which constrains what the agent may *do*.
 
 ### Measured on AgentDojo
 

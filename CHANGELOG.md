@@ -67,6 +67,15 @@ versioning once it reaches 1.0.
   destination lists identical to the hand-declared ones — the rest fall back to checking
   every argument. The harness runs it as `--policies auto`; RESULTS.md has the number.
 
+- **A reference policy judge** (`reasongate.judges.AnthropicJudge`, `pip install
+  "reasongate[judge]"`). `PolicyGate` shipped as a seam with no judge; this is the first
+  one, off by default and installed separately so the core stays zero-dependency. The
+  policy is the system instruction, the request is data inside `<request>` tags and the
+  instruction says so, the verdict is a JSON object under a schema with the rule number,
+  a refusal raises so the gate reports "not evaluated" rather than allowed, and the policy
+  prefix is cached. Measured on the real corpus in RESULTS.md → *The policy judge*. The
+  stance in the docs moves from "no judge ships" to "no judge is the default".
+
 ### Fixed
 - **List-valued destinations were never matched.** `recipients=[...]` was stringified and
   compared as `"['a@b']"`, so a tainted address inside a list passed. Each scalar inside a
