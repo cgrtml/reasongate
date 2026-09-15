@@ -35,6 +35,7 @@ the injection is worded.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
@@ -70,6 +71,31 @@ def _b64_payloads(text: str) -> List[str]:
         return []
 
 
+# Argument names that carry content the model composed: what a message says, not where it
+# goes. Used when a policy declares no content_args of its own.
+_CONTENT_ARG_NAMES = ("body", "content", "message", "text", "subject", "title", "description",
+                      "note", "notes", "comment", "summary", "html", "markdown")
+
+# The tokens inside composed content that are worth tracing: addresses and identifiers,
+# not prose. A URL, an email, or a long run with digits (an account, a passport number).
+_CONTENT_TOKEN = re.compile(
+    r"(?:https?://|www\.)\S+"
+    r"|\b[\w.+-]+@[\w-]+\.[\w.-]+"
+    r"|\b(?=[A-Za-z0-9-]*\d)[A-Za-z0-9][A-Za-z0-9-]{7,}\b"
+    r"|\b[\w-]+\.(?:com|org|net|io|co|ai|edu|gov|info|biz|dev|app|tld)(?:/\S*)?", re.I)
+
+
+def _content_tokens(value: object) -> List[str]:
+    """URLs, emails and identifiers inside composed content, as strings."""
+    out: List[str] = []
+    for scalar in _scalars(value):
+        for m in _CONTENT_TOKEN.finditer(scalar):
+            tok = m.group(0).rstrip(".,;:)!?\"'")
+            if len(tok) >= _MIN_SUBSTR_LEN:
+                out.append(tok)
+    return out
+
+
 def _scalars(value: object) -> List[str]:
     """Every scalar inside an argument value, as strings: a list of recipients, a
     dict of fields, or the value itself."""
@@ -86,26 +112,91 @@ def _scalars(value: object) -> List[str]:
     return [str(value)]
 
 
-def _value_in_untrusted(value: str, text: str) -> bool:
+_URL_NOISE = re.compile(r"https?://|\bwww\.", re.I)
+
+
+def _url_key(s: str) -> str:
+    """A URL without the parts an attacker or a model varies for free: scheme, a leading
+    www., a trailing slash, case. "https://www.X.com/a/" and "x.com/a" become the same key."""
+    k = _URL_NOISE.sub("", _norm(s)).strip().rstrip("/")
+    return k
+
+
+class _Text:
+    """One segment's text with its derived forms computed once and reused.
+
+    authorize() checks every destination scalar and every content token against every
+    segment. Recomputing the alphanumeric, URL-stripped and base64-decoded views of a
+    2 KB document per token made a six-token message cost 1.2 ms; computed once per
+    segment per call it is back under 0.05 ms. Decision-identical by construction.
+    """
+    __slots__ = ("raw", "_norm", "_tokens", "_alnum", "_urls", "_b64")
+
+    def __init__(self, raw: str):
+        self.raw = raw
+        self._norm = None
+        self._tokens = None
+        self._alnum = None
+        self._urls = None
+        self._b64 = None
+
+    @property
+    def norm(self) -> str:
+        if self._norm is None:
+            self._norm = _norm(self.raw)
+        return self._norm
+
+    @property
+    def tokens(self) -> set:
+        if self._tokens is None:
+            self._tokens = set(self.norm.split())
+        return self._tokens
+
+    @property
+    def alnum(self) -> str:
+        if self._alnum is None:
+            self._alnum = _alnum(self.raw)
+        return self._alnum
+
+    @property
+    def urls(self) -> str:
+        if self._urls is None:
+            self._urls = _URL_NOISE.sub("", self.norm)
+        return self._urls
+
+    @property
+    def b64(self) -> List[str]:
+        if self._b64 is None:
+            self._b64 = [_norm(d) for d in _b64_payloads(self.raw)]
+        return self._b64
+
+
+def _value_in_untrusted(value: str, text: Union[str, "_Text"]) -> bool:
+    prepared = text if isinstance(text, _Text) else _Text(text)
     v = _norm(value)
     if not v:
         return False
-    t = _norm(text)
     if len(v) >= _MIN_SUBSTR_LEN:
-        if v in t:
+        if v in prepared.norm:
             return True
-    elif v in t.split():
+    elif v in prepared.tokens:
+        return True
+
+    # Canonical URL: the destination survived the literal check only because of the
+    # scheme, a www., or a trailing slash.
+    vk = _url_key(v)
+    if len(vk) >= _MIN_SUBSTR_LEN and ("." in vk or "/" in vk) and vk in prepared.urls:
         return True
 
     # The value survived the literal check. Two cheap transforms an attacker gets
     # for free; both are linear in the text, unlike a full normalization pass.
     va = _alnum(value)
-    if len(va) >= _MIN_SUBSTR_LEN and va in _alnum(text):
+    if len(va) >= _MIN_SUBSTR_LEN and va in prepared.alnum:
         return True
-    for decoded in _b64_payloads(text):
-        d = _norm(decoded)
-        if len(v) >= _MIN_SUBSTR_LEN and v in d:
-            return True
+    if len(v) >= _MIN_SUBSTR_LEN:
+        for d in prepared.b64:
+            if v in d:
+                return True
     return False
 
 
@@ -123,12 +214,19 @@ class ToolPolicy:
     returns_untrusted: the tool brings outside data in (web fetch, file read, inbox,
         database of user-supplied records). Its result is untrusted for every later
         call in the same GateSession, which is how taint survives more than one hop.
+    content_args: arguments that carry what the action SAYS rather than where it goes
+        (body, subject, description). A URL, email or identifier inside them that was
+        copied from untrusted content — and not named by the principal — taints the
+        call: a phishing link in a message to a legitimate recipient, a passport number
+        mailed to the user's own wife. Prose overlap is not traced; copying text is what
+        agents are for. Empty => inferred from argument names (body, content, subject…).
     """
     name: str
     sensitive: bool = False
     destination_args: Tuple[str, ...] = ()
     requires_authorization: bool = False
     returns_untrusted: bool = False
+    content_args: Tuple[str, ...] = ()
 
 
 @dataclass
@@ -237,6 +335,8 @@ class ToolGate:
                 (trusted if seg.trust == "trusted" else untrusted).append(seg)
             elif isinstance(seg, str):
                 untrusted.append(Segment(text=seg, source="unknown", trust="untrusted"))
+        # Derived views of each segment, computed once for every value checked below.
+        prepared = {id(seg): _Text(seg.text) for seg in (*trusted, *untrusted)}
 
         # 1) Argument taint — a destination value quoted from untrusted content.
         fields = policy.destination_args or tuple(args.keys())
@@ -255,18 +355,40 @@ class ToolGate:
                 # even when an untrusted document also contains it — an attacker cannot
                 # write into the principal's own request. Measured on AgentDojo, this
                 # was 11 of the 34 legitimate tasks the gate used to break.
-                if any(_value_in_untrusted(scalar, seg.text) for seg in trusted):
+                if any(_value_in_untrusted(scalar, prepared[id(seg)]) for seg in trusted):
                     designated.append(f"{fname}={scalar!r} named in trusted context")
                     continue
                 hit = False
                 for seg in untrusted:
-                    if _value_in_untrusted(scalar, seg.text):
+                    if _value_in_untrusted(scalar, prepared[id(seg)]):
                         origin = seg.source + (f":{seg.domain}" if seg.domain else "")
                         tainted.append(f"{fname}={scalar!r} originates from untrusted {origin}")
                         hit = True
                         break
                 if hit:
                     break
+        # 1b) Content taint — a traceable token (URL, email, identifier) inside what the
+        #     action says, copied from untrusted content and not named by the principal.
+        #     Measured on AgentDojo: every attack the destination check let through after
+        #     step 1 was exactly this — the recipient was the user's, the payload was not.
+        content_fields = policy.content_args or tuple(
+            a for a in args if str(a).lower() in _CONTENT_ARG_NAMES)
+        for fname in content_fields:
+            value = args.get(fname)
+            if value is None or fname in fields and fname in policy.destination_args:
+                continue
+            for tok in _content_tokens(value):
+                if any(_value_in_untrusted(tok, prepared[id(seg)]) for seg in trusted):
+                    continue
+                for seg in untrusted:
+                    if _value_in_untrusted(tok, prepared[id(seg)]):
+                        origin = seg.source + (f":{seg.domain}" if seg.domain else "")
+                        tainted.append(f"{fname} contains {tok!r} copied from untrusted {origin}")
+                        break
+                else:
+                    continue
+                break
+
         if tainted:
             # Deliberately checked BEFORE the authorization short-circuit: a trusted
             # principal authorizes an ACTION ("email the summary to my manager"), not

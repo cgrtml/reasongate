@@ -41,6 +41,18 @@ versioning once it reaches 1.0.
   successful one, and a task that never touched the vector was never attacked. Reported as
   both raw ASR and ASR among delivered pairs.
 
+- **Content taint.** `ToolPolicy.content_args` (inferred from argument names — body,
+  content, subject, description… — when not declared): a URL, email or identifier inside
+  what an action *says*, copied from untrusted content and not named by the principal,
+  taints the call. Prose is not traced. Evidence string: `contains … copied from untrusted`.
+  On AgentDojo this stopped every pair step 1 had opened and changed no user task.
+- **Canonical URL matching** in the gate: scheme, leading `www.`, trailing slash and case
+  no longer defeat a destination match.
+- **Per-segment memoization** in `ToolGate.authorize`: derived views of each context
+  segment (normalized, alphanumeric, URL-stripped, base64-decoded) are computed once per
+  call instead of once per value; a six-token message against a 2 KB document dropped from
+  1.2 ms to ~0.26 ms. Decision-identical, verified on the full AgentDojo replay.
+
 ### Fixed
 - **List-valued destinations were never matched.** `recipients=[...]` was stringified and
   compared as `"['a@b']"`, so a tainted address inside a list passed. Each scalar inside a

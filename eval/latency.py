@@ -155,6 +155,11 @@ def build_cases(corpus: List[str]) -> List[Case]:
     segments = [Segment(text="Summarize the record.", source="user", trust="trusted"),
                 Segment(text=poisoned, source="crm", trust="untrusted")]
     call = {"name": "transfer_funds", "args": {"account": "9981", "amount": 84200}}
+    mail_gate = ToolGate([ToolPolicy("send_email", sensitive=True, destination_args=("recipients",))])
+    mail_call = {"name": "send_email", "args": {
+        "recipients": ["boss@corp.example"], "subject": "Q3",
+        "body": "refs: www.a.example/1 www.b.example/2 c@d.example ORD-2024-000123 "
+                "ACC98765432 https://e.example/z"}}
 
     return [
         Case("scan_input, chat prompt", f"real, {len(short)} chars",
@@ -173,6 +178,10 @@ def build_cases(corpus: List[str]) -> List[Case]:
              lambda: shield.scan_context(segments)),
         Case("ToolGate.authorize", "sensitive tool, tainted argument",
              lambda: gate.authorize(call, context=segments)),
+        # A composed message: content taint traces every URL / email / identifier in the
+        # body against every untrusted segment, so cost scales with the token count.
+        Case("ToolGate.authorize (content)", "clean call, 6 traceable tokens in the body",
+             lambda: mail_gate.authorize(mail_call, context=segments, authorized=True)),
     ]
 
 

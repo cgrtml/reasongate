@@ -171,7 +171,8 @@ and is labeled as such in the tool's own output. Apple M3 Pro, Python 3.9, 0.4.0
 | `scan_input` | 50 KB document, clean (the input ceiling) | 210.997 ms | 215.967 ms |
 | `scan_input` | 50 KB document, attack in the raw text | 84.718 ms | 87.883 ms |
 | `scan_context` | poisoned 2 KB document, 2 segments | 3.025 ms | 3.131 ms |
-| `ToolGate.authorize` | sensitive tool, tainted argument | 0.020 ms | 0.021 ms |
+| `ToolGate.authorize` | sensitive tool, tainted argument | 0.030 ms | 0.031 ms |
+| `ToolGate.authorize` | clean call, 6 traceable tokens in the body (content taint) | 0.299 ms | 0.302 ms |
 
 Throughput, one process, 60-char prompts: **5,422 prompts/s**. The core holds no state and
 does no I/O, so throughput scales with processes (`--procs N`); it is CPU-bound pure
@@ -191,11 +192,15 @@ Python, so it does not scale with threads.
   compare against. The crossover is around **25 KB**: past that size the rule core is not
   the cheap option, because a transformer truncates its input at 512 tokens and we do not.
   Anyone gating whole documents or RAG chunks should budget per KB, not per prompt.
-- **The action gate is free and size-independent (0.020 ms).** It reads tool arguments and
-  segment trust, not prose, so it does not pay for document length. The layer that
-  survives rewording is also the layer that costs nothing. The transform-aware matching
-  added in 0.4.0 runs only after a literal match fails, so it does not show up here; a
-  miss against a large untrusted context is its worst case.
+- **The action gate is size-independent and cheap (0.030 ms), and since content taint
+  it scales with tokens, not prose.** It reads tool arguments and segment trust, so it does
+  not pay for document length. Content taint traces every URL, email and identifier in a
+  composed message against every untrusted segment: a six-token body against a 2 KB
+  document costs ~0.3 ms with the per-segment views memoized (1.2 ms before), a body with
+  no such tokens stays under 0.07 ms. The gate rows were measured in a later run than the
+  scan rows; that run's scan rows came out 10–15% slower than the table (run-to-run
+  variance on this machine, nothing in the scan path changed), so ratios between the two
+  groups should not be read to the third digit.
 
 **Against 0.3.0**, on the same machine: chat prompts got faster (0.218 → 0.178 ms) and
 throughput rose (4,667 → 5,422/s) despite roughly twice as many patterns, because of the
@@ -325,6 +330,7 @@ table at the top of this section stays as the 0.4.0 baseline.
 | 0 | 0.4.0 baseline | 64.9% | 12.6% | — | — |
 | 1 | Trusted provenance dominates | **75.3%** | 13.6% | +10 / 0 | 6 / 0 |
 | 3 | Outbound reads gated on their URL | 73.2% | **9.5%** | 0 / 2 | 0 / 25 |
+| 2 | Content taint + canonical URLs | 73.2% | **8.9%** | 0 / 0 | 0 / 4 |
 
 **Step 1.** A destination the principal named themselves — "refund GB29…", "share it with
 john.doe@…", "send it to Alice" — is theirs, even when an untrusted document also contains
@@ -350,6 +356,29 @@ the user gave passes by step 1, a URL quoted from untrusted text does not. Slack
 0.0% across all four suites. The cost is two slack tasks whose legitimate URL came from a
 channel message — under the vector-aware trust map, where channel messages carry no
 injection and are trusted, utility is unchanged (76.3%) and ASR still drops 14.4% → 10.7%.
+
+**Step 2.** Two things. *Canonical URLs*: a destination that differed from the untrusted
+text only by scheme, a leading `www.`, a trailing slash or case now matches — the cheap
+part of "the model rewrote the argument". *Content taint*: for arguments that carry what
+an action *says* (body, subject, description, content…), a URL, email or identifier inside
+them that was copied from untrusted content and not named by the principal taints the
+call. Prose is deliberately not traced — summarizing or forwarding what someone wrote is
+what agents are for — only addresses and identifiers are. Authorization does not launder
+this either.
+
+This closed exactly the shape step 1 paid for, and nothing else: the three slack pairs that
+DM Alice a phishing link and the travel pair that mails the passport number are stopped,
+slack ASR 2.9% → 0.0%, overall 9.5% → 8.9% (6.2% with every argument a destination), and
+**no user task changed in any configuration** — zero false positives from content taint
+across 97 tasks and six configurations. What remains at 8.9% is two known shapes: the
+looked-up file id (mostly the replay, see the limits above) and the calendar-title payload
+that only the `all` scope reaches.
+
+Cost: content taint traces every token in composed content against every untrusted
+segment, so gate latency now scales with the token count — a six-token message against a
+2 KB document is ~0.26 ms after memoizing the per-segment views (1.2 ms before), a
+one-token or token-free message stays under 0.07 ms. The numbers are in *Cost per
+request*.
 
 *Accounting change from this step on.* A blocked fetch means the injection never reaches
 the agent, and replaying the attacker's calls anyway scored a stopped attack as a

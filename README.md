@@ -281,8 +281,11 @@ points of utility — insurance against the case where the model's judgement fai
 Every change to the gate is re-measured on the same pairs and logged in RESULTS.md
 (*Improvements, measured*); the first one — a value the user named themselves is theirs even
 if an untrusted document also contains it — took clean utility from 64.9% to 75.3% at one
-point of ASR, and the second — a fetch is gated on where it goes — took ASR from 13.6% to
-9.5% and strict mode to 0.0%; the table there says which pairs paid for each.
+point of ASR, the second — a fetch is gated on where it goes — took ASR from 13.6% to 9.5%
+and strict mode to 0.0%; the third — a phishing link or an identifier copied from untrusted
+data into a message *body* taints the call, prose does not — closed what the first had
+opened, 9.5% to 8.9%, without changing a single user task. The table there says which
+pairs paid for each.
 Read both columns. The 35 points of utility the gate costs are legitimate destinations the
 agent read from a store — the IBAN on the bill it was asked to pay — which taint cannot tell
 from an attacker's IBAN in the same file, because it does not look at the words. What gets
