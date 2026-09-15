@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); this project aims for semantic
 versioning once it reaches 1.0.
 
-## [Unreleased]
+## [0.5.0]
 
 ### Added
 - **The action gate measured on AgentDojo** (`eval/agentdojo_gate.py`, RESULTS.md → *The
@@ -68,7 +68,7 @@ versioning once it reaches 1.0.
   every argument. The harness runs it as `--policies auto`; RESULTS.md has the number.
 
 - **A reference policy judge** (`reasongate.judges.AnthropicJudge`, `pip install
-  "reasongate[judge]"`). `PolicyGate` shipped as a seam with no judge; this is the first
+  "reasongate[judge]"`, Python 3.10+ — the current SDK's floor; the core stays 3.9+). `PolicyGate` shipped as a seam with no judge; this is the first
   one, off by default and installed separately so the core stays zero-dependency. The
   policy is the system instruction, the request is data inside `<request>` tags and the
   instruction says so, the verdict is a JSON object under a schema with the rule number,

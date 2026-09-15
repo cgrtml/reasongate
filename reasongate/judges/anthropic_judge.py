@@ -80,7 +80,8 @@ class AnthropicJudge:
                 import anthropic
             except ImportError as exc:  # pragma: no cover - exercised without the extra
                 raise ImportError(
-                    "AnthropicJudge needs the Anthropic SDK: pip install \"reasongate[judge]\"") from exc
+                    "AnthropicJudge needs the Anthropic SDK (Python 3.10+): "
+                    "pip install \"reasongate[judge]\"") from exc
             self._client = anthropic.Anthropic()
         return self._client
 
