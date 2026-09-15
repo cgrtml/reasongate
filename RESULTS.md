@@ -331,6 +331,7 @@ table at the top of this section stays as the 0.4.0 baseline.
 | 1 | Trusted provenance dominates | **75.3%** | 13.6% | +10 / 0 | 6 / 0 |
 | 3 | Outbound reads gated on their URL | 73.2% | **9.5%** | 0 / 2 | 0 / 25 |
 | 2 | Content taint + canonical URLs | 73.2% | **8.9%** | 0 / 0 | 0 / 4 |
+| 5 | Policies drafted from tool schemas, no hand input | 71.1% | 8.9% | 0 / 2 | 0 / 0 |
 
 **Step 1.** A destination the principal named themselves — "refund GB29…", "share it with
 john.doe@…", "send it to Alice" — is theirs, even when an untrusted document also contains
@@ -379,6 +380,23 @@ segment, so gate latency now scales with the token count — a six-token message
 2 KB document is ~0.26 ms after memoizing the per-segment views (1.2 ms before), a
 one-token or token-free message stays under 0.07 ms. The numbers are in *Cost per
 request*.
+
+**Step 5.** What an integrator gets with *no* review: `policies_from_schemas(tools)` drafts
+every policy from the tool definitions alone — sensitivity and ingest from the name,
+destination and content arguments from the schema's argument names. Scored against the
+hand-declared policies on AgentDojo's 74 tools: 28 of 28 sensitive tools found, none
+falsely; 22 of 28 destination lists identical, the other six broader (checking every
+argument). Run through the same 609 pairs, the unreviewed draft reaches **the same attack
+success as the hand-declared policies in every configuration** and costs two of 97 user
+tasks — both `append_to_file`, where the draft checks every argument and the text the user
+asked to copy from an email counts as a destination. `describe()` prints that tool as
+`(all)`; declaring `destination_args=("file_id",)` is the one-line review that recovers
+them. Two things were fixed in the catalog on the way and are generic, not benchmark
+fitting: `<thing>_id` is a destination only for an irreversible action (the first draft
+treated the id of the transaction being *updated* as one and broke four tasks), and a
+membership change whose verb and noun are not adjacent is sensitive. A draft that treats
+content fields as destinations is also the reason the `all` scope catches the
+calendar-title payload — the paranoid dial and the unreviewed default are the same thing.
 
 *Accounting change from this step on.* A blocked fetch means the injection never reaches
 the agent, and replaying the attacker's calls anyway scored a stopped attack as a

@@ -31,8 +31,10 @@ Three gate modes, two destination scopes, all reported:
   declared destination arguments declared per tool by hand (listed in POLICIES)
   all      every argument is a destination — the gate's default when nothing is declared
 
-Policies are declared by hand and the name-inference catalog is scored against them,
-because a benchmark that lets the tool under test pick its own configuration is not one.
+Policies are declared by hand (POLICIES) and the catalog is scored against them, because
+a benchmark that lets the tool under test pick its own configuration is not one.
+`--policies auto` runs the catalog's own draft from the tool schemas instead, to measure
+what an unreviewed configuration costs.
 
   python eval/agentdojo_gate.py                # all suites, all modes, markdown + JSON
   python eval/agentdojo_gate.py --suite banking --json out.json
@@ -71,7 +73,7 @@ except ImportError:
     raise SystemExit(2)
 
 from reasongate import GateDecision, GateSession, Segment, ToolGate, ToolPolicy
-from reasongate.catalog import infer_policy
+from reasongate.catalog import infer_policy, policies_from_schemas
 
 BENCHMARK_VERSION = "v1.2.2"
 ATTACK = "important_instructions"
@@ -140,6 +142,19 @@ def attacker_reachable_tools(suite) -> set:
         except Exception:
             pass
     return set(probe.canary_hits)
+
+
+def policies_auto(suite, scope: str, untrusted_tools: Optional[set] = None) -> List[ToolPolicy]:
+    """Policies drafted from the suite's own tool schemas — no hand declaration at all.
+    This is what an integrator gets from `policies_from_schemas(tools)` before reviewing
+    anything; measured against the hand-declared POLICIES to see what review is worth."""
+    out = []
+    for p in policies_from_schemas(suite.tools):
+        untrusted = (p.name in untrusted_tools) if untrusted_tools is not None else p.returns_untrusted
+        dests = p.destination_args if scope == "declared" else ()
+        out.append(ToolPolicy(p.name, sensitive=p.sensitive, destination_args=dests,
+                              returns_untrusted=untrusted, content_args=p.content_args))
+    return out
 
 
 def policies_for(suite_name: str, tool_names: Sequence[str], scope: str,
@@ -257,10 +272,16 @@ class GatedReplay(BasePipelineElement):
         return query, runtime, env, [*messages, *new_messages], extra_args
 
 
-def run_suite(suite_name: str, suite, mode: str, scope: str, trust: str = "flat") -> dict:
+def run_suite(suite_name: str, suite, mode: str, scope: str, trust: str = "flat",
+              policies: str = "hand") -> dict:
     tool_names = [t.name for t in suite.tools]
     reachable = attacker_reachable_tools(suite) if trust == "vectors" else None
-    gate = None if mode == "off" else ToolGate(policies_for(suite_name, tool_names, scope, reachable))
+    if mode == "off":
+        gate = None
+    elif policies == "auto":
+        gate = ToolGate(policies_auto(suite, scope, reachable))
+    else:
+        gate = ToolGate(policies_for(suite_name, tool_names, scope, reachable))
     pipeline = GatedReplay(gate, mode)
     attack = load_attack(ATTACK, suite, pipeline)
 
@@ -318,7 +339,7 @@ def run_suite(suite_name: str, suite, mode: str, scope: str, trust: str = "flat"
     if mode == "off":
         errors_in_failed_off = sum(1 for k, v in detail_pairs.items() if not v["attack_succeeded"] and v.get("errors"))
     return {
-        "suite": suite_name, "mode": mode, "scope": scope, "trust": trust,
+        "suite": suite_name, "mode": mode, "scope": scope, "trust": trust, "policies": policies,
         "injection_tasks_skipped_empty_ground_truth": skipped,
         "attacker_reachable_tools": sorted(reachable) if reachable is not None else None,
         "off_failed_pairs_with_tool_errors": errors_in_failed_off,
@@ -345,6 +366,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--suite", default=None, help="one suite; default all four")
     ap.add_argument("--json", default=None, help="write full results here")
+    ap.add_argument("--policies", default="hand", choices=["hand", "auto"],
+                    help="hand: POLICIES declared in this file; auto: drafted from tool schemas")
     args = ap.parse_args()
 
     suites = get_suites(BENCHMARK_VERSION)
@@ -356,9 +379,9 @@ def main() -> None:
     results = []
     for mode, scope, trust in configs:
         for name in names:
-            r = run_suite(name, suites[name], mode, scope, trust)
+            r = run_suite(name, suites[name], mode, scope, trust, args.policies)
             results.append(r)
-            print(f"{name:10} {mode:6} {scope:8} {trust:7} pairs={r['pairs']:3d}  "
+            print(f"{name:10} {mode:6} {scope:8} {trust:7} {args.policies:4} pairs={r['pairs']:3d}  "
                   f"utility clean {100*r['utility_clean']:5.1f}%  "
                   f"under attack {100*r['utility_under_attack']:5.1f}%  "
                   f"ASR {100*r['asr']:5.1f}%", flush=True)

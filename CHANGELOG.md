@@ -53,6 +53,20 @@ versioning once it reaches 1.0.
   call instead of once per value; a six-token message against a 2 KB document dropped from
   1.2 ms to ~0.26 ms. Decision-identical, verified on the full AgentDojo replay.
 
+- **Policies from tool schemas** (`reasongate.catalog.policies_from_schemas`): drafts a
+  `ToolPolicy` per tool from its definition — Anthropic `input_schema`, OpenAI
+  `function.parameters`, MCP `inputSchema`, or a pydantic-backed tool — using the name
+  for sensitivity and ingest and the argument names for destination and content
+  arguments. `describe()` now lists content arguments. The catalog's vocabulary grew
+  generically alongside: principals and credentials (`participants`, `members`, `user`,
+  `password`, …) are destinations; `<thing>_id` is a destination for an irreversible
+  action (delete, cancel, revoke) and not for an edit (update, share, append), where it
+  only names the object being worked on; membership changes whose verb and noun are not
+  adjacent (`add_calendar_event_participants`) are sensitive. Scored on AgentDojo's 74
+  tools with no hand input: 28 of 28 sensitive tools found, none falsely, and 22 of 28
+  destination lists identical to the hand-declared ones — the rest fall back to checking
+  every argument. The harness runs it as `--policies auto`; RESULTS.md has the number.
+
 ### Fixed
 - **List-valued destinations were never matched.** `recipients=[...]` was stringified and
   compared as `"['a@b']"`, so a tainted address inside a list passed. Each scalar inside a

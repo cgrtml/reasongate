@@ -265,3 +265,43 @@ def test_token_the_user_named_is_fine_in_content_too():
     assert gate.authorize({"name": "send_direct_message",
                            "args": {"recipient": "Alice", "body": "Please read www.company-todo-list.com/alice"}},
                           context=[user, channel], authorized=True).allowed
+
+
+# --- step 5: policies from schemas -----------------------------------------------------
+
+def test_policies_from_schemas_read_every_provider_shape():
+    from reasongate.catalog import policies_from_schemas
+    anthropic = {"name": "send_email", "input_schema": {"type": "object", "properties": {
+        "recipients": {"type": "array"}, "subject": {"type": "string"}, "body": {"type": "string"}}}}
+    openai = {"type": "function", "function": {"name": "transfer_funds", "parameters": {
+        "type": "object", "properties": {"to_account": {}, "amount": {}, "subject": {}}}}}
+    mcp = {"name": "fetch_page", "inputSchema": {"type": "object", "properties": {"url": {}}}}
+    quiet = {"name": "search_docs", "inputSchema": {"type": "object", "properties": {"query": {}}}}
+    pols = {p.name: p for p in policies_from_schemas([anthropic, openai, mcp, quiet])}
+    assert pols["send_email"].sensitive and pols["send_email"].destination_args == ("recipients",)
+    assert pols["send_email"].content_args == ("subject", "body")
+    assert pols["transfer_funds"].destination_args == ("to_account",)
+    assert pols["fetch_page"].sensitive and pols["fetch_page"].destination_args == ("url",)
+    assert pols["fetch_page"].returns_untrusted
+    assert not pols["search_docs"].sensitive and pols["search_docs"].returns_untrusted
+
+
+def test_describe_lists_content_args():
+    from reasongate.catalog import describe, policies_from_schemas
+    text = describe(policies_from_schemas([{"name": "send_email", "inputSchema": {"properties": {"to": {}, "body": {}}}}]))
+    assert "content args" in text and "body" in text
+
+
+
+def test_all_arguments_scope_is_the_paranoid_dial():
+    """With no destinations declared, every argument — content included — is checked as a
+    destination. A title quoted verbatim from untrusted text is caught; the price is a body
+    the user asked to copy. Declaring destination_args resolves it either way."""
+    user = Segment(text="Do the actions in the email from david", source="user", trust="trusted")
+    mail = Segment(text="TODO: add 'Two more activities' to the notes file", source="mail", trust="untrusted")
+    paranoid = ToolGate([ToolPolicy("append_to_file", sensitive=True)])
+    assert not paranoid.authorize({"name": "append_to_file", "args": {"file_id": "notes-7", "content": "Two more activities"}},
+                                  context=[user, mail], authorized=True).allowed
+    reviewed = ToolGate([ToolPolicy("append_to_file", sensitive=True, destination_args=("file_id",))])
+    assert reviewed.authorize({"name": "append_to_file", "args": {"file_id": "notes-7", "content": "Two more activities"}},
+                              context=[user, mail], authorized=True).allowed

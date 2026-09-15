@@ -339,6 +339,12 @@ class ToolGate:
         prepared = {id(seg): _Text(seg.text) for seg in (*trusted, *untrusted)}
 
         # 1) Argument taint — a destination value quoted from untrusted content.
+        # With no destinations declared, every argument is one — content fields included.
+        # That is the paranoid dial: an unreviewed policy checks a title quoted verbatim
+        # from untrusted text as a destination (it catches AgentDojo's calendar-title
+        # payload) and, as the price, blocks a body the user asked to copy from an email
+        # (two tasks in the same benchmark). Declaring destination_args is the review
+        # that resolves it either way; content is then traced by token only.
         fields = policy.destination_args or tuple(args.keys())
         tainted: List[str] = []
         designated: List[str] = []

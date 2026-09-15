@@ -234,10 +234,13 @@ for call in from_anthropic(response.content):
         results.append(run(call))
 ```
 
-`from_openai` and `from_mcp` take the other two shapes. The catalog infers policies from
-tool names so the first integration is minutes rather than an afternoon — and it prints
-what it inferred, because a tool called `process_request` that wires money is invisible to
-name inference.
+`from_openai` and `from_mcp` take the other two shapes. `policies_from_schemas(tools)`
+drafts the whole policy set from the tool definitions — name for sensitivity, argument names
+for destinations — so the first integration is minutes rather than an afternoon; on
+AgentDojo the unreviewed draft matched the hand-declared policies' attack success in every
+configuration at a cost of two tasks out of 97. It prints what it inferred, because a tool
+called `process_request` that wires money is invisible to name inference, and the two tasks
+it costs are the line `describe()` shows as `(all)`.
 
 ### Policy review (the seam, not a solution)
 
