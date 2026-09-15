@@ -324,6 +324,7 @@ table at the top of this section stays as the 0.4.0 baseline.
 |---|---|---:|---:|---:|---:|
 | 0 | 0.4.0 baseline | 64.9% | 12.6% | — | — |
 | 1 | Trusted provenance dominates | **75.3%** | 13.6% | +10 / 0 | 6 / 0 |
+| 3 | Outbound reads gated on their URL | 73.2% | **9.5%** | 0 / 2 | 0 / 25 |
 
 **Step 1.** A destination the principal named themselves — "refund GB29…", "share it with
 john.doe@…", "send it to Alice" — is theirs, even when an untrusted document also contains
@@ -339,6 +340,23 @@ the message. Destination taint does not look at content. What does: fragment tai
 message-bearing arguments (an argument that *contains* a span copied from untrusted text),
 which is the next step and is measured below when it lands; and strict mode, which blocks
 these by co-presence at its usual utility price.
+
+**Step 3.** A fetch has no effect the gate can see, but its URL is a channel out — a query
+string carries data, and "visit this URL" was every attack the taint gate let through on
+the slack suite. The catalog now marks an outbound read (`get_webpage`, `fetch_url`,
+`browse`…) as sensitive on its URL argument only, with its result still untrusted; a URL
+the user gave passes by step 1, a URL quoted from untrusted text does not. Slack ASR 24.8%
+→ 2.9% (the three surviving pairs are step 1's same-recipient shape); strict mode reaches
+0.0% across all four suites. The cost is two slack tasks whose legitimate URL came from a
+channel message — under the vector-aware trust map, where channel messages carry no
+injection and are trusted, utility is unchanged (76.3%) and ASR still drops 14.4% → 10.7%.
+
+*Accounting change from this step on.* A blocked fetch means the injection never reaches
+the agent, and replaying the attacker's calls anyway scored a stopped attack as a
+successful one. The replay now runs the injection phase only when a tool result actually
+delivered the injection text; pairs where the user's task never touched the vector count
+as not attacked. That moves the no-gate floor from 97.4% to 95.6% (97.5% among the 597 of
+609 pairs that deliver) and leaves earlier rows comparable to within two points.
 
 ### With a model in the loop
 

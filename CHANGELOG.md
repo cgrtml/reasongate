@@ -30,6 +30,17 @@ versioning once it reaches 1.0.
   recipient the user named and puts its payload in the message body — the shape fragment
   taint is for. Evidence string: `named in trusted context`.
 
+- **Outbound reads are gated on their URL.** The catalog marks a fetch / browse / download
+  tool as sensitive on its URL argument only (its result stays untrusted): a fetch has no
+  effect the gate can see, but its address is a channel out, and "visit this URL" was every
+  attack the gate let through on AgentDojo's slack suite. Slack ASR 24.8% → 2.9%, strict
+  mode 0.0% on all four suites; two slack tasks whose legitimate URL came from a channel
+  message are the cost under a flat trust map, none under the vector-aware one.
+- **The AgentDojo replay is delivery-aware.** The injection phase runs only when a tool
+  result actually delivered the injection text; a blocked fetch is a stopped attack, not a
+  successful one, and a task that never touched the vector was never attacked. Reported as
+  both raw ASR and ASR among delivered pairs.
+
 ### Fixed
 - **List-valued destinations were never matched.** `recipients=[...]` was stringified and
   compared as `"['a@b']"`, so a tainted address inside a list passed. Each scalar inside a

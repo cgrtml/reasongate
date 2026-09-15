@@ -66,3 +66,45 @@ def test_canary_trust_map_marks_only_attacker_reachable_tools():
     reachable = attacker_reachable_tools(suite)
     assert "read_file" in reachable and "get_most_recent_transactions" in reachable
     assert "get_balance" not in reachable and "get_iban" not in reachable
+
+
+def test_replay_skips_the_injection_phase_when_nothing_delivered_it():
+    """A hijacked agent presupposes an agent that read the injection. When the gate blocks
+    the fetch that would have delivered it, the attacker's calls must not be replayed —
+    otherwise a stopped attack scores as a successful one."""
+    from agentdojo.attacks.attack_registry import load_attack
+    from agentdojo_gate import GatedReplay
+
+    suite = get_suite("v1.2.2", "slack")
+    tools = [t.name for t in suite.tools]
+    ut, it = suite.user_tasks["user_task_6"], suite.injection_tasks["injection_task_3"]
+
+    off = GatedReplay(None, "off")
+    attack = load_attack("important_instructions", suite, off)
+    inj = attack.attack(ut, it)
+    off.set_tasks(ut, it, inj)
+    _, succeeded = suite.run_task_with_pipeline(off, ut, it, inj)
+    assert off.injection_delivered is True and succeeded is True
+
+    gated = GatedReplay(ToolGate(policies_for("slack", tools, "declared")), "taint")
+    gated.set_tasks(ut, it, inj)
+    _, succeeded = suite.run_task_with_pipeline(gated, ut, it, inj)
+    assert gated.injection_delivered is False
+    assert succeeded is False
+    assert [t for _, t, d in gated.decisions if not d.allowed] == ["get_webpage"]
+    assert not any(phase == "injection" for phase, _, _ in gated.decisions)
+
+
+def test_delivery_check_sees_through_yaml_escaped_newlines():
+    """Tool results pass through a YAML dump that writes line breaks as a literal backslash-n;
+    travel's review injections were invisible to the check until that was unescaped."""
+    from agentdojo.attacks.attack_registry import load_attack
+    from agentdojo_gate import GatedReplay
+
+    suite = get_suite("v1.2.2", "travel")
+    ut, it = suite.user_tasks["user_task_0"], suite.injection_tasks["injection_task_0"]
+    off = GatedReplay(None, "off")
+    inj = load_attack("important_instructions", suite, off).attack(ut, it)
+    off.set_tasks(ut, it, inj)
+    suite.run_task_with_pipeline(off, ut, it, inj)
+    assert off.injection_delivered is True

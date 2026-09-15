@@ -55,7 +55,17 @@ _DESTINATION_ARGS = (
     "bucket", "key", "table", "collection", "queue", "topic",
 )
 
+# Reads that reach out: a fetch, a browse, a download. They have no effect the gate can
+# see, but the address they are given is an exfiltration channel — a query string carries
+# data out, and "visit this URL" is a whole class of injection goals. Measured on
+# AgentDojo, every attack the taint gate let through on the slack suite was one of these.
+# So a read whose destination is a URL is gated on that destination (and only that), and
+# its result stays untrusted like any other ingest.
+_OUTBOUND_READ = r"webpage|web page|browse|browser|open url|fetch url|visit|download|http|curl|wget|navigate"
+_URL_ARGS = ("url", "uri", "link", "href", "endpoint", "address", "webhook", "host")
+
 _SENSITIVE_RE = re.compile(rf"(?:^|[^a-z])(?:{_SENSITIVE})(?:[^a-z]|$)", re.I)
+_OUTBOUND_RE = re.compile(rf"(?:^|[^a-z])(?:{_OUTBOUND_READ})(?:[^a-z]|$)", re.I)
 _INGEST_RE = re.compile(rf"(?:^|[^a-z])(?:{_INGEST})(?:[^a-z]|$)", re.I)
 
 
@@ -87,6 +97,12 @@ def infer_policy(name: str, *, known_args: Sequence[str] = ()) -> ToolPolicy:
     dests: List[str] = []
     if known_args:
         dests = [a for a in known_args if a.lower() in _DESTINATION_ARGS]
+    # Outbound read: gated on its URL argument only. Declared by name, or by an argument
+    # name when the schema is known ("fetch(link=...)").
+    url_args = [a for a in known_args if a.lower() in _URL_ARGS] if known_args else []
+    if ingest and (_OUTBOUND_RE.search(words) or url_args):
+        return ToolPolicy(name=str(name), sensitive=True,
+                          destination_args=tuple(url_args), returns_untrusted=True)
     return ToolPolicy(
         name=str(name),
         sensitive=sensitive,
