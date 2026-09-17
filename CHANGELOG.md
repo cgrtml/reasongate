@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); this project aims for semantic
 versioning once it reaches 1.0.
 
-## [Unreleased]
+## [0.6.0]
 
 ### Added
 - **`reasongate-mcp`: the gate as a stdio MCP gateway** (`reasongate.mcp`). Launches the
