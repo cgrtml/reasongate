@@ -4,6 +4,14 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); this project aims for semantic
 versioning once it reaches 1.0.
 
+## [0.6.1] - 2026-09-17
+
+- `reasongate` is now a second name for the `reasongate-mcp` console script, so the
+  package can be started the way MCP clients start PyPI servers from the registry:
+  `uvx reasongate -- <server command>`.
+- `server.json` added for the official MCP Registry (`io.github.cgrtml/reasongate`);
+  the README carries the registry's `mcp-name` ownership marker.
+
 ## [0.6.0]
 
 ### Added

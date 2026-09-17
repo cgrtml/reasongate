@@ -1,4 +1,5 @@
 # ReasonGate
+<!-- mcp-name: io.github.cgrtml/reasongate -->
 
 [![PyPI](https://img.shields.io/pypi/v/reasongate)](https://pypi.org/project/reasongate/)
 [![CI](https://github.com/cgrtml/reasongate/actions/workflows/ci.yml/badge.svg)](https://github.com/cgrtml/reasongate/actions/workflows/ci.yml)
