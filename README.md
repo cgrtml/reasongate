@@ -195,6 +195,8 @@ injection is worded.
 
 ### Run it in front of the MCP servers you already use
 
+![reasongate-mcp in front of the official filesystem MCP server: a poisoned file is read, the write it dictates is blocked with its provenance, the write the user asked for goes through](https://raw.githubusercontent.com/cgrtml/reasongate/main/docs/mcp.gif)
+
 The gate is most useful where the tool calls actually happen. `reasongate-mcp` is a stdio
 MCP gateway: it launches your real server, forwards every message, drafts policies from
 the server's own `tools/list` schemas, and answers a blocked `tools/call` itself as a tool
