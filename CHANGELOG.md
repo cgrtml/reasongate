@@ -4,6 +4,23 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); this project aims for semantic
 versioning once it reaches 1.0.
 
+## [Unreleased]
+
+### Added
+- **`reasongate-mcp`: the gate as a stdio MCP gateway** (`reasongate.mcp`). Launches the
+  real MCP server as a subprocess, forwards every message, derives policies from the
+  server's `tools/list` schemas, authorizes each `tools/call` against a `GateSession` fed
+  with every earlier result, and answers a blocked call as an `isError` tool result that
+  never reaches the server. One config line in any stdio-MCP host
+  (`claude mcp add name -- reasongate-mcp -- <server command>`); `--mode taint|strict`,
+  `--audit FILE`, `--trust TEXT`. Standard library only. A call pipelined behind a pending
+  `tools/list` waits for the list before it is judged. Tested end to end against a fake
+  server in CI and by hand against the official filesystem server (14 tools, a dictated
+  write blocked, a clean write through). Known limit, stated in the module: the gateway
+  does not see the user's message, so trusted-context designation needs `--trust`.
+- Catalog: `edit`, `patch`, `overwrite`, `chmod`, `chown` are sensitive verbs (the
+  filesystem server's `edit_file` was drafted as harmless).
+
 ## [0.5.0]
 
 ### Added

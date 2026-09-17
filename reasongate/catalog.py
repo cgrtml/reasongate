@@ -33,7 +33,7 @@ _SENSITIVE = (
     r"transfer|pay|payment|purchase|buy|charge|refund|invoice|wire|withdraw|"
     r"delete|remove|destroy|drop|truncate|purge|revoke|disable|"
     r"exec|execute|run|shell|bash|command|eval|script|deploy|release|merge|push|"
-    r"write|create|update|upsert|insert|modify|rename|move|copy|upload|"
+    r"write|create|update|upsert|insert|modify|edit|patch|overwrite|rename|move|copy|upload|chmod|chown|"
     r"grant|invite|add user|add member|add participant|approve|sign|order|book|"
     r"reserve|reservation|schedule|reschedule|cancel|append|call"
 )

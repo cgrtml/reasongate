@@ -22,6 +22,9 @@ classifiers = [
 # The core (Shield + the rule/normalize/indirect/canary detectors) is PURE PYTHON - zero dependencies.
 dependencies = []
 
+[project.scripts]
+reasongate-mcp = "reasongate.mcp.gateway:main"
+
 [project.optional-dependencies]
 judge = ["anthropic>=1; python_version >= '3.10'"]   # the 1.x SDK needs 3.10+; the core stays 3.9+
 # NOTE: the ML detector + trained model + provenance now ship in the separate
