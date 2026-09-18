@@ -9,7 +9,7 @@ in production.
 
 ## Reporting a vulnerability
 
-Please report suspected vulnerabilities **privately** — do not open a public issue.
+Please report suspected vulnerabilities **privately**; do not open a public issue.
 
 - Email: **cagritemelusa@gmail.com** with subject `SECURITY: reasongate`.
 - Include a description, affected version, and a minimal reproduction if possible.
