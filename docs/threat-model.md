@@ -2,14 +2,14 @@
 
 *A short, honest design note on the layer that answers "you can just reword the
 attack." It states the threat, why text-detection is structurally insufficient,
-and the capability-based control ReasonGate uses instead — with its guarantees and,
+and the capability-based control ReasonGate uses instead, with its guarantees and,
 just as important, its non-guarantees.*
 
 ## 1. The threat: indirect prompt injection against agents
 
 The interesting attack surface is no longer a user typing a jailbreak. It is an
-autonomous, tool-carrying agent that reads **untrusted content** — a retrieved
-document, an email body, a web page, a tool result — and then takes an **action**
+autonomous, tool-carrying agent that reads **untrusted content** (a retrieved
+document, an email body, a web page, a tool result) and then takes an **action**
 (sends mail, moves money, deletes a file, executes code). The malicious instruction
 lives in the *data the agent retrieves*, not in the user's request. The user is
 innocent; the agent treats the retrieved text as authoritative and acts on it.
@@ -23,7 +23,7 @@ only the second is a breach. This document is about preventing the second.
 A signature/ML detector answers *"is this text an injection?"* That question can be
 lost by rewording. A rule layer catches phrasings it has a pattern for; a classifier
 catches distributions it has seen. Neither catches a *novel* rephrasing of the same
-intent — and an attacker gets unlimited attempts to find one.
+intent, and an attacker gets unlimited attempts to find one.
 
 This is not a tuning problem; it is the nature of matching text against an unbounded
 space of paraphrases. ReasonGate is explicit about it: on naturally-phrased attacks
@@ -35,7 +35,7 @@ the attack text will always have a reworded variant that gets through.
 
 The robust move is to stop trying to *recognize the attack* and instead *constrain
 what an action is allowed to do given where it came from*. This is the capability-
-based view of prompt-injection defense — closely related to Simon Willison's framing
+based view of prompt-injection defense, closely related to Simon Willison's framing
 of **the "lethal trifecta"** (private data + untrusted content + an exfiltration
 channel, all reachable in one context) and to control-/capability-flow approaches
 such as the dual-LLM pattern and CaMeL. Break any leg of the trifecta and the breach
@@ -50,7 +50,7 @@ aware action gate** that sits between a proposed tool call and its execution.
 
 The integrating application labels the data the agent sees with provenance, using
 `Segment(text, source, trust, domain)`. `trust` is `"trusted"` (the authorized
-principal — e.g. the signed-in staff user, the system prompt) or `"untrusted"`
+principal, e.g. the signed-in staff user or the system prompt) or `"untrusted"`
 (anything retrieved: RAG documents, tool output, web, email). A plain string with no
 provenance is treated as **untrusted** (fail-safe default).
 
@@ -72,7 +72,7 @@ whether the trusted principal explicitly authorized *this* action:
    whitespace-normalized text, with a whole-token rule for very short values.
 
 2. **Capability co-presence (coarse backstop).** If a sensitive call fires while any
-   untrusted content is in scope and nothing trusted authorized it, block it — the
+   untrusted content is in scope and nothing trusted authorized it, block it. That is the
    lethal-trifecta condition, even when the destination is not literally quoted.
 
 An explicit trusted authorization bypasses both (a legitimate, staff-initiated
@@ -86,20 +86,20 @@ internal error it fails **closed** for sensitive tools and open for the rest. Ev
 decision is explainable (`GateDecision.explain()`), so a block is auditable, not a
 black box.
 
-## 5. What it guarantees — and what it does not
+## 5. What it guarantees, and what it does not
 
 **Guarantees (given the contract in §6):** untrusted data cannot escalate into a
 gated action, however the injection is worded. A reworded attack that defeats the
 detector still cannot wire funds to an account, or send a record to an address, that
 came from untrusted content.
 
-**Non-guarantees — stated plainly:**
+**Non-guarantees, stated plainly:**
 
 - **It is not a detector and not a completeness claim.** It constrains *sensitive,
   declared* actions. Tools you do not mark sensitive are not gated.
 - **Argument taint is a heuristic**, based on value-presence in untrusted text. An
   attacker who can induce a sensitive call whose destination is *not* drawn from the
-  untrusted text falls through to the coarser co-presence rule — which is deliberately
+  untrusted text falls through to the coarser co-presence rule, which is deliberately
   conservative and can over-gate (see below).
 - **Co-presence can over-gate.** Blocking every sensitive action while any untrusted
   content is in scope is safe but blunt; production use wants explicit authorization
@@ -122,14 +122,14 @@ with real, on-disk side effects (an outbox and a ledger). Its fourth scenario fe
 **reworded** attack the detector misses; the CI invariant
 (`tests/test_stakes_demo.py`) verifies that (i) detection does not block it, (ii)
 without the gate the agent breaches, and (iii) with the gate there are **zero** side
-effects — on every commit. A mirror test verifies the gate does **not** over-block a
+effects, on every commit. A mirror test verifies the gate does **not** over-block a
 legitimate, authorized transfer.
 
 ## 8. Limitations & future work
 
 - **Taint propagation.** Today taint is single-hop (does the argument appear in an
-  untrusted segment?). Multi-hop dataflow — an untrusted value transformed before it
-  reaches a tool argument — is future work.
+  untrusted segment?). Multi-hop dataflow (an untrusted value transformed before it
+  reaches a tool argument) is future work.
 - **Channel coverage.** The gate reasons about the *provenance* the app supplies; it
   does not itself discover untrusted channels.
 - **Authorization UX.** A production deployment needs a real trusted-authorization
@@ -143,4 +143,4 @@ legitimate, authorized transfer.
 
 *This is a design note, not a peer-reviewed paper. It documents the reasoning behind
 the `reasongate.ToolGate` layer honestly, including where it stops. Corrections and
-adversarial reading are welcome — open an issue.*
+adversarial reading are welcome; open an issue.*
