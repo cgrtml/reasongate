@@ -6,6 +6,19 @@ versioning once it reaches 1.0.
 
 ## [Unreleased]
 
+- **`reasongate-mcp --mode ask`.** Same rules as `taint`, but a tainted call is put to the
+  user through MCP elicitation (`elicitation/create`, a boolean `allow` with the tool name
+  and the evidence in the message) and forwarded only on an explicit yes; a decline or a
+  cancel returns an error result to the model, and a host that did not declare the
+  elicitation capability gets a plain block. The parked call keeps its own request id, so
+  the host sees an ordinary response. Audit records carry an `outcome` field (`ASK`,
+  `allow (user approved)`, `BLOCK (user declined)`). Tested end to end against a fake
+  host that answers elicitations.
+- `GateSession(propagation="arguments")` and a third trust level, `neutral`: a tool result
+  is untrusted only if the tool is `returns_untrusted` or one of its argument values came
+  from untrusted content; otherwise neutral, which neither taints nor designates. Measured
+  on AgentDojo as a negative result (one task recovered, nine looked-up destinations let
+  through), so the default stays `scope`. `eval/agentdojo_gate.py --propagation`.
 - `eval/agentdojo_gate.py --attack NAME` selects the AgentDojo attack template for the
   replay (default unchanged); the result records which template ran.
 - `eval/bootstrap_ci.py`: 95% percentile-bootstrap intervals for the replay's three

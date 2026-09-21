@@ -57,7 +57,7 @@ class Segment:
     """
     text: str
     source: str = "retrieved"      # "user" | "retrieved" | "tool" | "web" | "file"
-    trust: str = "untrusted"       # "trusted" | "untrusted"
+    trust: str = "untrusted"       # "trusted" | "untrusted" | "neutral" (neither taints nor designates)
     domain: Optional[str] = None   # origin (e.g. "wikipedia.org", "inbox", "vendor-x")
 
 

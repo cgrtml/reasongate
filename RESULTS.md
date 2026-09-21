@@ -465,13 +465,47 @@ residual is the same two shapes (looked-up file ids, the calendar title); that i
 phrasing-independence claim on a second wording, not a robustness result against an
 attacker who adapts to the gate.
 
+**Block, or ask.** The utility cost above is the cost of *blocking*. `reasongate-mcp
+--mode ask` keeps the same taint rules but puts a tainted call to the user through MCP
+elicitation (a yes/no question carrying the tool name and the evidence line) and blocks
+only if the host cannot ask or the user declines. The replay says how often that question
+would come up: on clean traffic, 42 tainted calls in 28 of the 97 user tasks under the
+flat map (0.43 questions per task), 31 calls in 23 tasks under the vector-aware map (0.32);
+in attacked pairs, 1.31 and 1.27 questions per pair, each one a real injection the user
+would see and decline. So the price of the gate in a host that can ask is roughly one
+confirmation in every three tasks rather than one broken task in four. Two caveats: a
+confirmation the user answers by habit protects nothing, and this counts questions, not
+how well people answer them.
+
+**Argument-based taint propagation, a negative result.** The session's default rule makes
+every tool result untrusted once untrusted content is in scope. Nine of the 23 tasks the
+vector-aware configuration breaks read their destination from a directory the attacker
+cannot write to (`get_channels`, `get_users_in_channel`, `search_contacts_by_name`), which
+suggested a narrower rule: a result is untrusted only if the tool is declared
+`returns_untrusted` or one of its argument values came from untrusted content; otherwise
+it is neutral, neither tainting later calls nor vouching for a value the injection also
+names. Implemented as `GateSession(propagation="arguments")` and re-run on the same 609
+pairs. Under the flat map nothing changes, because every read tool is `returns_untrusted`
+there. Under the vector-aware map it recovers one task (a contact search) and breaks one
+(a channel name that the injection had also mentioned), and ASR rises from 9.5% to 10.3%:
+nine travel pairs newly lost, four newly stopped. The lost pairs are one shape, traced call
+by call: the injection says *reserve the most expensive hotel in Paris*, no hotel is named,
+the agent lists the city's hotels with a clean argument, reads their prices, and reserves
+the dearest; every value the reservation uses came from a neutral listing, so the taint
+never attaches. The scope rule stops it only because the listing ran after the poisoned
+read. That is the looked-up-destination limit made concrete, and it is why the default
+stays `scope`. The option remains for deployments whose lookups are genuinely
+attacker-proof and whose sensitive calls do not take looked-up destinations; the number
+says it should be a deliberate choice, not the default.
+
 Reproduce (offline, about eight minutes for the three runs on an M3 Pro):
 
 ```bash
 python eval/agentdojo_gate.py --json hand.json
 python eval/agentdojo_gate.py --policies auto --json auto.json
 python eval/agentdojo_gate.py --attack tool_knowledge --json tk.json
-python eval/bootstrap_ci.py hand.json     # intervals for any of the three
+python eval/agentdojo_gate.py --propagation arguments --json argprop.json
+python eval/bootstrap_ci.py hand.json     # intervals for any of the runs
 ```
 
 ### With a model in the loop

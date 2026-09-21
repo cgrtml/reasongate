@@ -186,8 +186,8 @@ class GatedReplay(BasePipelineElement):
     """
     name = PIPELINE_NAME
 
-    def __init__(self, gate: Optional[ToolGate], mode: str):
-        self.gate, self.mode = gate, mode
+    def __init__(self, gate: Optional[ToolGate], mode: str, propagation: str = "scope"):
+        self.gate, self.mode, self.propagation = gate, mode, propagation
         self.user_task = None
         self.injection_task = None
         self.decisions: List[Tuple[str, str, GateDecision]] = []   # (phase, tool, decision)
@@ -212,7 +212,7 @@ class GatedReplay(BasePipelineElement):
         session = None
         if self.gate is not None:
             session = GateSession(self.gate, context=[
-                Segment(text=query, source="user", trust="trusted")])
+                Segment(text=query, source="user", trust="trusted")], propagation=self.propagation)
 
         phases = [("user", self.user_task)]
         if self.injection_task is not None:
@@ -273,7 +273,7 @@ class GatedReplay(BasePipelineElement):
 
 
 def run_suite(suite_name: str, suite, mode: str, scope: str, trust: str = "flat",
-              policies: str = "hand", attack_name: str = ATTACK) -> dict:
+              policies: str = "hand", attack_name: str = ATTACK, propagation: str = "scope") -> dict:
     tool_names = [t.name for t in suite.tools]
     reachable = attacker_reachable_tools(suite) if trust == "vectors" else None
     if mode == "off":
@@ -282,7 +282,7 @@ def run_suite(suite_name: str, suite, mode: str, scope: str, trust: str = "flat"
         gate = ToolGate(policies_auto(suite, scope, reachable))
     else:
         gate = ToolGate(policies_for(suite_name, tool_names, scope, reachable))
-    pipeline = GatedReplay(gate, mode)
+    pipeline = GatedReplay(gate, mode, propagation)
     attack = load_attack(attack_name, suite, pipeline)
 
     utility_clean: Dict[str, bool] = {}
@@ -340,7 +340,7 @@ def run_suite(suite_name: str, suite, mode: str, scope: str, trust: str = "flat"
         errors_in_failed_off = sum(1 for k, v in detail_pairs.items() if not v["attack_succeeded"] and v.get("errors"))
     return {
         "suite": suite_name, "mode": mode, "scope": scope, "trust": trust, "policies": policies,
-        "attack": attack_name,
+        "attack": attack_name, "propagation": propagation,
         "injection_tasks_skipped_empty_ground_truth": skipped,
         "attacker_reachable_tools": sorted(reachable) if reachable is not None else None,
         "off_failed_pairs_with_tool_errors": errors_in_failed_off,
@@ -371,6 +371,8 @@ def main() -> None:
                     help="hand: POLICIES declared in this file; auto: drafted from tool schemas")
     ap.add_argument("--attack", default=ATTACK,
                     help="AgentDojo attack template for the replay (default important_instructions)")
+    ap.add_argument("--propagation", default="scope", choices=["scope", "arguments"],
+                    help="how a tool result inherits trust in the session: scope (default) or arguments")
     args = ap.parse_args()
 
     suites = get_suites(BENCHMARK_VERSION)
@@ -382,7 +384,7 @@ def main() -> None:
     results = []
     for mode, scope, trust in configs:
         for name in names:
-            r = run_suite(name, suites[name], mode, scope, trust, args.policies, args.attack)
+            r = run_suite(name, suites[name], mode, scope, trust, args.policies, args.attack, args.propagation)
             results.append(r)
             print(f"{name:10} {mode:6} {scope:8} {trust:7} {args.policies:4} {args.attack} pairs={r['pairs']:3d}  "
                   f"utility clean {100*r['utility_clean']:5.1f}%  "

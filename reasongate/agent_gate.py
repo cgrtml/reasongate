@@ -332,7 +332,12 @@ class ToolGate:
         trusted: List[Segment] = []
         for seg in context:
             if isinstance(seg, Segment):
-                (trusted if seg.trust == "trusted" else untrusted).append(seg)
+                if seg.trust == "trusted":
+                    trusted.append(seg)
+                elif seg.trust == "neutral":
+                    continue          # a clean lookup's result: neither taints nor designates
+                else:
+                    untrusted.append(seg)
             elif isinstance(seg, str):
                 untrusted.append(Segment(text=seg, source="unknown", trust="untrusted"))
         # Derived views of each segment, computed once for every value checked below.
@@ -459,6 +464,17 @@ class GateSession:
         anything it had read into what it passed on;
       * otherwise the result is trusted and costs nothing later.
 
+    `propagation="arguments"` replaces the second rule with a narrower one: a tool's
+    result is untrusted only if the tool is declared `returns_untrusted` or one of its
+    argument values was itself quoted from untrusted content (and not named in trusted
+    context). Otherwise the result is *neutral*: a directory lookup with no arguments, or
+    with the user's own query, neither taints later calls nor vouches for a value the
+    injection also names (trusted dominance is for the principal's own words), even after
+    the agent has read something poisoned; a lookup whose query came from the poisoned
+    text yields an untrusted result. The price is the case the scope rule covers and this
+    one cannot: the model choosing, on the injection's instruction, among entries of a
+    listing the attacker did not write. Measured on AgentDojo in RESULTS.md.
+
     Usage mirrors the agent loop itself:
 
         session = GateSession(gate, context=[user_request])
@@ -472,8 +488,13 @@ class GateSession:
 
     def __init__(self,
                  gate: ToolGate,
-                 context: Optional[Iterable[Union[Segment, str]]] = None):
+                 context: Optional[Iterable[Union[Segment, str]]] = None,
+                 *,
+                 propagation: str = "scope"):
+        if propagation not in ("scope", "arguments"):
+            raise ValueError("propagation must be 'scope' or 'arguments'")
         self.gate = gate
+        self.propagation = propagation
         self.context: List[Segment] = []
         for seg in context or []:
             self.context.append(seg if isinstance(seg, Segment)
@@ -491,7 +512,25 @@ class GateSession:
         return seg
 
     def _untrusted_in_scope(self) -> bool:
-        return any(s.trust != "trusted" for s in self.context)
+        return any(s.trust not in ("trusted", "neutral") for s in self.context)
+
+    def _arguments_tainted(self, call: ToolCall) -> bool:
+        """Does any argument value of this call trace to untrusted context?"""
+        args = call.get("args") if isinstance(call, dict) else None
+        if not isinstance(args, dict) or not args:
+            return False
+        trusted = [s for s in self.context if s.trust == "trusted"]
+        untrusted = [s for s in self.context if s.trust not in ("trusted", "neutral")]
+        if not untrusted:
+            return False
+        prepared = {id(seg): _Text(seg.text) for seg in (*trusted, *untrusted)}
+        for value in args.values():
+            for scalar in _scalars(value):
+                if any(_value_in_untrusted(scalar, prepared[id(seg)]) for seg in trusted):
+                    continue
+                if any(_value_in_untrusted(scalar, prepared[id(seg)]) for seg in untrusted):
+                    return True
+        return False
 
     # -- the loop ----------------------------------------------------------
 
@@ -513,7 +552,14 @@ class GateSession:
         try:
             policy = self.gate._policy_for(name)
             if trust is None:
-                if policy.returns_untrusted or self._untrusted_in_scope():
+                if policy.returns_untrusted:
+                    trust = "untrusted"
+                elif self.propagation == "arguments":
+                    # A clean lookup's result is neutral, not trusted: it must not
+                    # designate a value the injection also names (trusted dominance is
+                    # for the principal's own words), and it must not taint either.
+                    trust = "untrusted" if self._arguments_tainted(call) else "neutral"
+                elif self._untrusted_in_scope():
                     trust = "untrusted"
                 else:
                     trust = "trusted"
