@@ -2,7 +2,7 @@
 
 Sifir-bagimlilik test: set_provider takili bir backend'in embed() tarafindan
 kullanildigini ve None'a donunce varsayilana geri donuldugunu dogrular.
-Burada bir bulut/anahtar GEREKMEZ — on-prem yolunun calistigi nokta budur.
+Burada bir bulut/anahtar GEREKMEZ; on-prem yolunun calistigi nokta budur.
 """
 from reasongate import embeddings
 

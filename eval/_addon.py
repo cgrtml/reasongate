@@ -9,8 +9,8 @@ Rather than dying on an ImportError or a FileNotFoundError halfway through a
 run, those scripts call `require_addon()` up front and exit with an explanation
 of what is missing and what still works without it.
 
-The rule-core benchmarks — `eval/public_bench.py` (over-defense) and
-`eval/adversarial.py` (evasion) — have no such dependency: they are offline and
+The rule-core benchmarks, `eval/public_bench.py` (over-defense) and
+`eval/adversarial.py` (evasion), have no such dependency: they are offline and
 run against this repository alone. The methodology, thresholds and harness for
 everything else stay here so the numbers in RESULTS.md remain auditable.
 """
@@ -31,7 +31,7 @@ This script needs the enterprise ML add-on, which is not installed.
 The ML detector, the trained model and the provenance detector moved out of the
 open core in 0.2.0; they ship in the separately-licensed `reasongate-enterprise`
 package. This repository keeps the methodology, the thresholds and the harness,
-so the numbers in RESULTS.md stay auditable — but the model itself is not here.
+so the numbers in RESULTS.md stay auditable, but the model itself is not here.
 
 Runs against this repository alone (no add-on, no API key, fully offline):
   python eval/public_bench.py    # over-defense on NotInject (339 benign)

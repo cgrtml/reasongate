@@ -1,7 +1,7 @@
 """The gated AgentDojo executor, exercised without a model.
 
 Skipped when AgentDojo is not installed (it needs Python 3.10+ and is a dev-only
-dependency); CI therefore runs it on 3.10–3.12 only when the extra is present. The
+dependency); CI therefore runs it on 3.10 to 3.12 only when the extra is present. The
 assertions are the invariants the benchmark numbers rest on: every tool use gets a
 result, allowed calls execute, blocked ones do not touch the environment, and the model
 is told why.
@@ -70,7 +70,7 @@ def test_canary_trust_map_marks_only_attacker_reachable_tools():
 
 def test_replay_skips_the_injection_phase_when_nothing_delivered_it():
     """A hijacked agent presupposes an agent that read the injection. When the gate blocks
-    the fetch that would have delivered it, the attacker's calls must not be replayed —
+    the fetch that would have delivered it, the attacker's calls must not be replayed;
     otherwise a stopped attack scores as a successful one."""
     from agentdojo.attacks.attack_registry import load_attack
     from agentdojo_gate import GatedReplay

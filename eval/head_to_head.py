@@ -113,7 +113,7 @@ def main():
     print("| Guard | Recall @ gandalf | FPR @ NotInject | ms/prompt |")
     print("|---|---:|---:|---:|")
     for name, r, f, ms in rows:
-        msx = f"{ms:.2f}" if ms is not None else "—"
+        msx = f"{ms:.2f}" if ms is not None else "n/a"
         print(f"| {name} | {r:.1f}% | {f:.1f}% | {msx} |")
 
 

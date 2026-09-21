@@ -1,4 +1,4 @@
-"""Audit emission — structured, SIEM-friendly, zero-dependency.
+"""Audit emission: structured, SIEM-friendly, zero-dependency.
 
 Every decision (ShieldResult) converts to an audit record (see types.to_dict).
 This module provides the lightweight hooks that push those records to a 'sink'.

@@ -1,4 +1,4 @@
-"""reasongate — a model-agnostic, explainable security gate for LLM apps."""
+"""reasongate: a model-agnostic, explainable security gate for LLM apps."""
 from reasongate.agent_gate import GateDecision, ToolGate, ToolPolicy, GateSession
 from reasongate.policy_gate import DeploymentPolicy, PolicyGate, TermJudge
 from reasongate.audit import AuditHook, file_sink, log_sink

@@ -5,7 +5,7 @@ application with forty tools has to classify forty tools before the gate does
 anything, and the usual outcome of that is an empty policy list and a gate that
 silently allows everything.
 
-This closes the gap between "installed" and "configured" — not the gap between
+This closes the gap between "installed" and "configured", not the gap between
 "configured" and "correct". Name inference is a heuristic and the wrong thing to
 rely on: a tool called `process_request` that wires money is invisible to it, and
 `delete_draft` is flagged as destructive when it is not. Treat the output as a
@@ -39,7 +39,7 @@ _SENSITIVE = (
 )
 
 # Tools that bring outside data in. Their results are untrusted for every later call
-# in a GateSession — this is what makes taint survive more than one hop.
+# in a GateSession; this is what makes taint survive more than one hop.
 _INGEST = (
     r"fetch|read|get|search|browse|crawl|scrape|retrieve|lookup|query|find|list|load|"
     r"download|open|view|inbox|receive|poll|subscribe|history|memory|recall|rag|"
@@ -68,7 +68,7 @@ def _is_destination_arg(arg: str, tool_words: str = "") -> bool:
     if a in _DESTINATION_ARGS:
         return True
     # "<thing>_id" is where an IRREVERSIBLE action lands (delete_file(file_id),
-    # cancel_event(event_id)) and is checked there. For an edit — update, share, append —
+    # cancel_event(event_id)) and is checked there. For an edit (update, share, append)
     # the id only names the object being worked on, usually looked up from the
     # principal's own store a moment earlier; treating it as a destination blocks
     # ordinary "update the one I just found" flows for no security gain (measured).
@@ -77,7 +77,7 @@ def _is_destination_arg(arg: str, tool_words: str = "") -> bool:
     return False
 
 # Reads that reach out: a fetch, a browse, a download. They have no effect the gate can
-# see, but the address they are given is an exfiltration channel — a query string carries
+# see, but the address they are given is an exfiltration channel; a query string carries
 # data out, and "visit this URL" is a whole class of injection goals. Measured on
 # AgentDojo, every attack the taint gate let through on the slack suite was one of these.
 # So a read whose destination is a URL is gated on that destination (and only that), and
@@ -143,7 +143,7 @@ def infer_policies(names: Iterable[str]) -> List[ToolPolicy]:
 
 
 def describe(policies: Iterable[ToolPolicy]) -> str:
-    """A reviewable table of what was inferred — print this, then correct it."""
+    """A reviewable table of what was inferred: print this, then correct it."""
     rows = ["tool                           sensitive  returns-untrusted  destination args        content args",
             "-" * 104]
     for p in policies:
@@ -153,7 +153,7 @@ def describe(policies: Iterable[ToolPolicy]) -> str:
                     f"{'yes' if p.returns_untrusted else 'no':17}  {dests:22}  {content}")
     rows.append("")
     rows.append("Inferred from names. A tool whose name does not say what it does is "
-                "invisible here — declare those by hand.")
+                "invisible here; declare those by hand.")
     return "\n".join(rows)
 
 
@@ -198,7 +198,7 @@ def _tool_name(tool) -> str:
 
 
 def policies_from_schemas(tools: Iterable) -> List[ToolPolicy]:
-    """Draft a policy per tool from its definition — name plus argument names.
+    """Draft a policy per tool from its definition: name plus argument names.
 
     Sensitivity and ingest come from the name (as in `infer_policy`); destination
     arguments come from the schema's argument names, so a sensitive tool is checked on

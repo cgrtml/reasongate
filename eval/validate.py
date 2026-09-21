@@ -1,7 +1,7 @@
 """Thorough validation: is the result REAL, and does it HOLD?  python eval/validate.py
 
 1) Leakage / duplicate check
-2) Trivial baselines (majority, length-only) — did the model learn a shortcut?
+2) Trivial baselines (majority, length-only): did the model learn a shortcut?
 3) 5-fold cross-validation: recall/FPR/F1 mean +/- std (does it hold on every split)
 4) 5x2cv F-test (neural-trees): is the soft tree vs LogReg difference solid
 5) Concrete example predictions (TP / FN / FP)

@@ -1,4 +1,4 @@
-"""Judge a request against the deployment's own policy — the input the filter never had.
+"""Judge a request against the deployment's own policy: the input the filter never had.
 
 Measured on the real corpus (`docs/coverage-gaps.md`), 54% of the attacks the rule core
 misses carry no attack marker at all. "Write a manifesto for the re-election of X" is an
@@ -18,7 +18,7 @@ This module is the seam that lets an application declare it:
     gate = PolicyGate(policy, judge=my_judge)
     verdict = gate.review(user_request)
 
-HONEST LIMITS — read before deploying this, they are not small:
+HONEST LIMITS, read before deploying this, they are not small:
 
   * **No judge ships with this package.** Deciding whether a sentence conflicts with a
     policy written in prose needs a model. With no judge configured the gate is inert
@@ -26,12 +26,12 @@ HONEST LIMITS — read before deploying this, they are not small:
     had checked.
   * **A model judge is itself a prompt-injection target.** The text it reads is the
     attacker's. Give it the policy as its instruction, the request as data, and treat
-    its verdict as one signal — never as the last word on a sensitive action.
+    its verdict as one signal, never as the last word on a sensitive action.
   * **This is advisory, not a capability boundary.** The gate that cannot be argued
     with is `ToolGate`: it constrains what the agent may *do*. Policy review constrains
     what it may be *asked*, which is a weaker claim and always will be.
   * **The bundled `TermJudge` is the floor, not the answer.** It matches declared terms
-    and nothing else — no paraphrase, no implication, trivially reworded around. It
+    and nothing else: no paraphrase, no implication, trivially reworded around. It
     exists so a deployment can start with something deterministic, auditable and free.
 
 Every verdict returns a `GateDecision`, so it lands in the same audit record as the
@@ -76,7 +76,7 @@ class TermJudge:
     """Deterministic baseline judge: matches the literal terms a policy declares.
 
     Zero dependencies, no network, no model, and no ability to recognise a paraphrase.
-    It is the floor — useful for the rules that really are literal (a competitor's
+    It is the floor, useful for the rules that really are literal (a competitor's
     name, an internal codeword, a banned URL) and useless for everything else. Prefer
     it over nothing; do not mistake it for policy understanding.
     """
@@ -124,7 +124,7 @@ class PolicyGate:
         """Ask the judge whether `text` conflicts with the policy.
 
         With no judge configured this returns `allow` with a reason that says the check
-        did not run — an unchecked request must never look like a cleared one.
+        did not run; an unchecked request must never look like a cleared one.
         """
         label = f"policy:{self.policy.name}"
         if self.judge is None:

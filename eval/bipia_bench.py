@@ -76,7 +76,7 @@ def main():
     print("\n--- markdown ---")
     print("| BIPIA | Recall (overall / family-1) | FPR (your-ref hard-neg) |")
     print("|---|---:|---:|")
-    print(f"| markers only | 0% / 0% | — |")
+    print(f"| markers only | 0% / 0% | n/a |")
     print(f"| + meta-directive patterns | {100*tot_d/tot:.0f}% / {100*f1d/f1t:.0f}% | {fpr_yr:.1f}% |")
 
 

@@ -1,9 +1,9 @@
-"""Embedding wrapper — VoyageAI by default, with a pluggable backend.
+"""Embedding wrapper: VoyageAI by default, with a pluggable backend.
 
 Turns text into vectors for the ML detectors. The default backend is VoyageAI
 (key from the environment or .env, VOYAGE_API_KEY). `set_provider()` swaps the
 backend, so deployments that require data sovereignty (air-gapped / defense)
-can produce embeddings with a LOCAL encoder and NO outbound call — the
+can produce embeddings with a LOCAL encoder and NO outbound call; the
 detectors calling embed() keep working unchanged.
 """
 from __future__ import annotations
@@ -64,7 +64,7 @@ def _get_client():
 
 def embed(texts: List[str], input_type: str = "document") -> List[List[float]]:
     texts = list(texts)
-    # If a backend is plugged in (e.g. an on-prem local encoder), use it — no outbound call.
+    # If a backend is plugged in (e.g. an on-prem local encoder), use it; no outbound call.
     if _provider is not None:
         return _provider(texts, input_type)
     client = _get_client()

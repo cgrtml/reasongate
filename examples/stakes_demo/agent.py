@@ -9,7 +9,7 @@ SIDE EFFECT. Two tools write to disk:
 After a run we inspect these files: with the shield OFF the customer record has
 left the building and a transfer was made; with the shield ON the files are
 empty. That is the difference between "said something bad" and "an actual breach
-happened" — and it is what makes the demo land.
+happened", and it is what makes the demo land.
 """
 from __future__ import annotations
 
@@ -86,7 +86,7 @@ def run_agent(system: str, user: str, retrieved: List[str], backend: Backend,
 
     Optional, opt-in action gate: if `gate` (a reasongate.ToolGate) is given, every
     proposed tool call is authorized against `context_segments` (the provenance of
-    the retrieved data) BEFORE it runs. Blocked calls never execute — no side effect.
+    the retrieved data) BEFORE it runs. Blocked calls never execute, so there is no side effect.
     With gate=None the behavior is identical to before (existing tests unaffected)."""
     final_text, calls = backend(system, user, retrieved)
     executed, blocked = [], []

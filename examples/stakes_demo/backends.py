@@ -8,7 +8,7 @@ ANTHROPIC_API_KEY is set) lets anyone verify this: given the same poisoned conte
 real model frequently calls the same two tools.
 
 Either way the demo's PROOF is unchanged: ReasonGate blocks the poisoned context
-before the model is ever called — so whether the model complies is beside the point.
+before the model is ever called, so whether the model complies is beside the point.
 """
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ def mock_backend(system: str, user: str, retrieved: List[str]) -> Tuple[str, Lis
     context = "\n".join(retrieved)
     calls: List[dict] = []
 
-    # The sensitive record the agent "sees" — if leaked, this content goes out.
+    # The sensitive record the agent "sees"; if leaked, this content goes out.
     record_body = context.strip() or "(no record)"
     balance_match = _BALANCE_RE.search(context)
     balance = balance_match.group(1) if balance_match else "$0.00"

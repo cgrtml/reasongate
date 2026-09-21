@@ -1,7 +1,7 @@
 """System-prompt leak detection with a canary token.
 
 A hidden 'canary' token is planted in the system prompt. If the model repeats
-that token in its OUTPUT, a system-prompt leak is PROVEN rather than guessed —
+that token in its OUTPUT, a system-prompt leak is PROVEN rather than guessed;
 no regex heuristic required. This is the deterministic counterpart of the
 "possible system-prompt text" hint (0.5) in leakage.py.
 

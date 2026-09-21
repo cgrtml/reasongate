@@ -1,4 +1,4 @@
-"""Plugin registry — separately-installed packages (e.g. the enterprise add-on)
+"""Plugin registry: separately-installed packages (e.g. the enterprise add-on)
 contribute detectors via entry points, without the core depending on them.
 
 This is the public API contract the enterprise package leans on:
@@ -9,7 +9,7 @@ This is the public API contract the enterprise package leans on:
 - Segment-aware provenance providers use the group ``reasongate.provenance``
   (they expose ``.scan_segment(Segment) -> Detection`` and a ``.name``).
 
-If nothing is installed the core runs rule-only — **silently, never an error**.
+If nothing is installed the core runs rule-only, **silently, never an error**.
 A failing plugin is logged and skipped; it can never break the gate.
 """
 from __future__ import annotations

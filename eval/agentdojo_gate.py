@@ -1,4 +1,4 @@
-"""The action gate, measured on AgentDojo — without a model in the loop.
+"""The action gate, measured on AgentDojo without a model in the loop.
 
 Everything else in RESULTS.md measures the detectors on prompts. Nothing measured the
 layer the product actually rests on: the gate. This does, on the benchmark built for
@@ -7,7 +7,7 @@ tasks, tool-using agents attacked through the data they read).
 
 It runs the benchmark's own ground-truth tool sequences through the gate instead of a
 model. Per (user task, injection task) pair, the "agent" does what the user asked and
-then does what the injection asked — the fully hijacked case — and AgentDojo's own
+then does what the injection asked (the fully hijacked case), and AgentDojo's own
 checkers score the result:
 
   utility    did the user's task still get done            (AgentDojo: task.utility)
@@ -15,21 +15,21 @@ checkers score the result:
              True = the attack SUCCEEDED; reported below as ASR)
 
 So the question is exactly the product's claim, isolated from any model's judgement:
-*if the agent complies with the injection, does the gate stop the action — and what does
+*if the agent complies with the injection, does the gate stop the action, and what does
 that cost the user's own actions?* Model runs sit on top of this and can only be better
 on utility (a model may refuse the injection) and can only be worse on security (a model
 may reword an argument the gate matched literally).
 
 Three gate modes, two destination scopes, all reported:
 
-  off      no gate — the floor: utility ~100%, ASR 100% by construction
+  off      no gate, the floor: utility ~100%, ASR 100% by construction
   taint    the user's request authorizes the task's actions; only an argument that traces
            to untrusted data blocks. The phrasing-independent signal on its own.
   strict   nothing is authorized; a sensitive call while untrusted data is in scope
            blocks (capability co-presence). The paranoid end of the dial.
 
   declared destination arguments declared per tool by hand (listed in POLICIES)
-  all      every argument is a destination — the gate's default when nothing is declared
+  all      every argument is a destination, the gate's default when nothing is declared
 
 Policies are declared by hand (POLICIES) and the catalog is scored against them, because
 a benchmark that lets the tool under test pick its own configuration is not one.
@@ -80,7 +80,7 @@ ATTACK = "important_instructions"
 
 # The injection text names the model it is addressing; AgentDojo derives that from the
 # pipeline's name. Every claude-* id renders as "Claude", so this id is used only to
-# make the attack read "to you, Claude" — no model is called.
+# make the attack read "to you, Claude"; no model is called.
 PIPELINE_NAME = "claude-3-7-sonnet-20250219-ground-truth-reasongate"
 
 # Hand-declared sensitive tools and their destination arguments, per suite. "Sensitive"
@@ -131,7 +131,7 @@ def attacker_reachable_tools(suite) -> set:
     placed in every injection vector the suite defines, every user task's ground truth is
     replayed, and any tool whose result carries the canary is attacker-writable. This is
     the trust map an integrator would declare by hand ("the inbox and the web are outside,
-    the channel list and the contact directory are ours") — derived from the benchmark
+    the channel list and the contact directory are ours"), derived from the benchmark
     itself so it cannot be tuned."""
     canary = {v: f"---CANARY_{v}---" for v in suite.get_injection_vector_defaults()}
     probe = GatedReplay(None, "off")
@@ -145,7 +145,7 @@ def attacker_reachable_tools(suite) -> set:
 
 
 def policies_auto(suite, scope: str, untrusted_tools: Optional[set] = None) -> List[ToolPolicy]:
-    """Policies drafted from the suite's own tool schemas — no hand declaration at all.
+    """Policies drafted from the suite's own tool schemas, no hand declaration at all.
     This is what an integrator gets from `policies_from_schemas(tools)` before reviewing
     anything; measured against the hand-declared POLICIES to see what review is worth."""
     out = []
@@ -223,8 +223,8 @@ class GatedReplay(BasePipelineElement):
         for phase, task in phases:
             if phase == "injection":
                 # A hijacked agent presupposes an agent that READ the injection. If no
-                # tool result delivered it — because the gate blocked the fetch, or the
-                # user's task never touched that vector — there is nothing to comply
+                # tool result delivered it (because the gate blocked the fetch, or the
+                # user's task never touched that vector), there is nothing to comply
                 # with, and replaying the attacker's calls anyway would score a stopped
                 # attack as a successful one (or an unreachable one as successful).
                 # Whitespace-normalized on both sides: tool results pass through a YAML
@@ -262,7 +262,7 @@ class GatedReplay(BasePipelineElement):
 
         # The hijacked agent's final message: what the user asked for AND what the injection
         # asked it to say. Several injection goals are output-only ("reply with X"), and a
-        # gate on tool calls cannot touch those — they must count as attacks that succeeded.
+        # gate on tool calls cannot touch those; they must count as attacks that succeeded.
         final = getattr(self.user_task, "GROUND_TRUTH_OUTPUT", "") or ""
         if self.injection_task is not None:
             final = (final + "\n\n" + (getattr(self.injection_task, "GROUND_TRUTH_OUTPUT", "") or "")).strip()
@@ -419,7 +419,7 @@ from agentdojo.agent_pipeline.tool_execution import ToolsExecutor, ToolsExecutio
 class GatedToolsExecutor(ToolsExecutor):
     """AgentDojo's ToolsExecutor with the gate in front of every call.
 
-    The session is rebuilt from the conversation on every pass — the user's request is
+    The session is rebuilt from the conversation on every pass; the user's request is
     trusted, every earlier tool result is fed through `record_result` so its trust is
     inherited the same way it would be in a real integration. A blocked call is not
     executed; the model receives a tool result that says so and why, which is what a

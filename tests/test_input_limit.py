@@ -1,4 +1,4 @@
-"""Input size bound — the security tool protecting itself against DoS.
+"""Input size bound: the security tool protecting itself against DoS.
 
 A detector chain (regex + normalization) can burn excessive resources on huge or
 pathological input. Shield truncates input to max_input_chars BEFORE scanning and

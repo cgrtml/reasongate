@@ -1,4 +1,4 @@
-"""ReasonGate — Stakes Demo.
+"""ReasonGate Stakes Demo.
 
 Same attack, one variable: THE SHIELD.
 
@@ -11,7 +11,7 @@ Run 1 vs 2 is the "wow" (the only difference is the shield). Run 3 is the proof
 that this is not a dumb blocklist. Run 4 is the point that answers "you can reword
 around a regex": the signature layer does miss the reworded attack, but the
 provenance-aware action gate blocks the tool call anyway, because its destination
-comes from untrusted content — phrasing-independent.
+comes from untrusted content, whatever the phrasing.
 
 Run:       python -m examples.stakes_demo.run
 No color:  python -m examples.stakes_demo.run --no-color
@@ -88,7 +88,7 @@ def run_shielded(record: str, shield: Shield):
 
     if inp.action == "block" or ctx.action == "block":
         blocker = ctx if ctx.action == "block" else inp
-        print("  " + red("BLOCKED BY THE SHIELD") + dim("  — the agent / model was never called"))
+        print("  " + red("BLOCKED BY THE SHIELD") + dim("  (the agent / model was never called)"))
         for d in blocker.detections:
             if d.triggered:
                 print(dim(f"     x {d.detector} (score={d.score:.2f}): {d.reason}"))
@@ -110,20 +110,20 @@ def run_shielded(record: str, shield: Shield):
 def run_gated(record: str, shield: Shield, gate: ToolGate):
     """SHIELD ON, but the injection is REWORDED so the signature detector misses it.
     The action gate is the second layer: it blocks the tool call because its
-    destination originates from untrusted content — regardless of the wording."""
+    destination originates from untrusted content, regardless of the wording."""
     reset_side_effects()
     seg = Segment(text=record, source="customer-record", trust="untrusted", domain="crm")
     ctx = shield.scan_context(seg)
     verdict = grn("allow") if ctx.action == "allow" else yel(ctx.action)
     print("  detection layer: context=" + verdict
-          + dim("  (reworded attack — the signature layer does not match it)"))
+          + dim("  (reworded attack; the signature layer does not match it)"))
 
     backend, _ = select_backend()
     run = run_agent(scenario.SYSTEM_PROMPT, scenario.USER_PROMPT, [record], backend,
                     gate=gate, context_segments=[seg])
     if run.blocked_calls:
         print("  action gate    : " + red("BLOCKED")
-              + dim("  — the tool call was stopped before it could run"))
+              + dim("  (the tool call was stopped before it could run)"))
         for bc in run.blocked_calls:
             dec = bc["decision"]
             d = dec.detections[0]
@@ -140,7 +140,7 @@ def run_gated(record: str, shield: Shield, gate: ToolGate):
 def main():
     _, backend_label = select_backend()
     print()
-    print(bold("  ReasonGate — Stakes Demo") + dim("   (Acme Bank customer-support agent)"))
+    print(bold("  ReasonGate Stakes Demo") + dim("   (Acme Bank customer-support agent)"))
     print(dim(f"  model backend: {backend_label}"))
     rule()
     print("  User (innocent): " + dim(scenario.USER_PROMPT[:70] + "..."))
@@ -183,9 +183,9 @@ def main():
     rule("═")
     print("  " + bold("Bottom line:") + " Same agent, same attack. Shield OFF -> the breach HAPPENS.")
     print("        Shield ON -> the known attack stops before the model sees it; the legit request passes;")
-    print("        and when the attack is REWORDED past the detector, the action gate still blocks it —")
+    print("        and when the attack is REWORDED past the detector, the action gate still blocks it,")
     print("        because untrusted data cannot authorize a sensitive action, however it is phrased.")
-    print("  " + dim("The proof isn't the text — it's the side-effect logs: examples/stakes_demo/_sideeffects/"))
+    print("  " + dim("The proof is not the text but the side-effect logs: examples/stakes_demo/_sideeffects/"))
     rule("═")
     print()
 

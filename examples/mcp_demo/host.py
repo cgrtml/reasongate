@@ -3,7 +3,7 @@
 Runs `reasongate-mcp` in front of the official filesystem MCP server on a scratch
 directory that holds one poisoned file, then plays the sequence an injected agent would:
 read the file, try the write the file dictates, then do the write the user actually
-wanted. No model, no key, deterministic — the same transcript every time.
+wanted. No model, no key, deterministic: the same transcript every time.
 
     python examples/mcp_demo/host.py
 

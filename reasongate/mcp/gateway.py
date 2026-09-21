@@ -79,7 +79,7 @@ class Gateway:
 
     def _record(self, call: dict, decision: GateDecision, forwarded: bool) -> None:
         line = (f"{'BLOCK' if not decision.allowed else 'allow'} {call['name']}"
-                + ("" if decision.allowed else f" — {decision.detections[0].reason[:140]}"))
+                + ("" if decision.allowed else f": {decision.detections[0].reason[:140]}"))
         if not self.quiet or not decision.allowed:
             _log(line)
         if self.audit_path:

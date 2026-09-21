@@ -1,13 +1,13 @@
-"""Imperative-form gate — the candidate-span extractor for the intent-alignment
+"""Imperative-form gate: the candidate-span extractor for the intent-alignment
 detector.
 
 Splits a chunk at sentence level and lets through only spans in IMPERATIVE /
 directive form. Only spans that pass the gate get embedded (a cost and
-topic-noise control). Offline, regex + a small verb lexicon — zero heavy
+topic-noise control). Offline, regex + a small verb lexicon, zero heavy
 dependencies.
 
 NAMED LIMIT: a non-imperative injection ("it would be great if the assistant
-renamed...") ESCAPES this gate — part of the app-layer provenance ceiling,
+renamed...") ESCAPES this gate; that is part of the app-layer provenance ceiling,
 named rather than hidden (see _notes/spec_17_alignment.md).
 """
 from __future__ import annotations

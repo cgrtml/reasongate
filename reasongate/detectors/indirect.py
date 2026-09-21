@@ -1,7 +1,7 @@
 """Indirect prompt-injection detector.
 
 The most common attack in production: the malicious instruction is not in the
-USER's prompt but hidden in the content the model READS — a RAG document, a web
+USER's prompt but hidden in the content the model READS: a RAG document, a web
 page, tool output, an email body. The user looks innocent; the attack lives in
 the "data".
 
@@ -11,7 +11,7 @@ This detector scans the retrieved content SEGMENTS and:
      assistant from inside data, hidden HTML/markdown comments, exfiltration
      instructions.
 
-Usage: Shield.protect(prompt, llm_fn, context=[...]) — the segments in context
+Usage: Shield.protect(prompt, llm_fn, context=[...]); the segments in context
 are scanned before they reach the LLM.
 """
 from __future__ import annotations
@@ -57,7 +57,7 @@ _PATTERNS: List[Tuple[str, str, float]] = [
     (r"(encode|encrypt|decode|encipher|cipher)\b[^.\n]{0,40}"
      r"\byour\s+(response|reply|answer|output|message)\b",
      "encode/encrypt the output (encode your response)", 0.85),
-    # give the output in THIS ENCODING (not a language — base/rot/hex/morse/cipher/emoji):
+    # give the output in THIS ENCODING (not a language: base/rot/hex/morse/cipher/emoji):
     (r"\byour\s+(response|reply|answer|output|message)\b[^.\n]{0,28}"
      r"\b(in|with|as|using|into)\b[^.\n]{0,22}"
      r"(base\s?\d+|rot[\s-]?13|hex(adecimal)?|morse|[a-z]+\s+cipher|emoji)",

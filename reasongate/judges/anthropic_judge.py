@@ -1,7 +1,7 @@
 """A reference policy judge on the Anthropic API.
 
-Answers `PolicyGate`'s question — does this request conflict with the deployment's
-declared policy? — with a model. Everything about how it is asked is chosen to make the
+Answers `PolicyGate`'s question (does this request conflict with the deployment's
+declared policy?) with a model. Everything about how it is asked is chosen to make the
 judge harder to turn against the deployment, and none of it makes that impossible:
 
   * The policy is the system instruction; the request is DATA inside `<request>` tags,

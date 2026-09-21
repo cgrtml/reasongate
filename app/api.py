@@ -1,4 +1,4 @@
-"""ReasonGate demo web API — rule-core, ZERO API keys, free to host.
+"""ReasonGate demo web API: rule core, zero API keys, free to host.
 
   GET  /        -> playground UI
   GET  /health
@@ -6,7 +6,7 @@
   POST /chat    -> protected-bot demo (attack blocked before it reaches the model)
 
 The default shield is the zero-dependency rule/normalization core: no VoyageAI,
-no model download, no cost. It showcases the honest strengths — explainable blocks,
+no model download, no cost. It showcases the honest strengths: explainable blocks,
 obfuscation resistance, and a structured, auditable decision record.
 """
 import os
@@ -83,7 +83,7 @@ def _bot_answer(prompt: str) -> str:
         except Exception:
             pass
     return ("Thanks for reaching out to Acme Bank support. I can help with account, "
-            "card, and payment questions — could you share a bit more detail?")
+            "card, and payment questions. Could you share a bit more detail?")
 
 
 @app.get("/")
@@ -114,7 +114,7 @@ _ACCT_RE = re.compile(r"account\s+(\d{3,})", re.IGNORECASE)
 
 def _naive_tool_calls(record: str):
     """Transparent stand-in for a NAIVE tool-using agent: it acts on action verbs it
-    finds in its context (this is exactly why indirect injection works — not specific
+    finds in its context (this is exactly why indirect injection works, not specific
     to any wording). 'send/forward/email ... <addr>' -> send_email; 'transfer ...
     account <N>' -> transfer_funds. No side effects: we only propose the calls."""
     calls = []
@@ -139,7 +139,7 @@ class Rec(BaseModel):
 def agent(r: Rec, x_demo_key: str = Header(None)):
     """Two layers on an agent scenario. The signature layer may MISS a reworded
     attack; the provenance-aware action gate blocks the tool call anyway, because
-    its destination is quoted from untrusted content — phrasing-independent."""
+    its destination is quoted from untrusted content, whatever the phrasing."""
     _gate(x_demo_key)
     record = r.record
     ctx = _shield.scan_context(record)                      # layer 1: detection
@@ -178,7 +178,7 @@ def chat(q: Q, x_demo_key: str = Header(None)):
     out = _shield.scan_output(answer)
     if out.action == "block":
         info["blocked"] = True
-        info["answer"] = "[Output shield: response withheld — it contained a leak]"
+        info["answer"] = "[Output shield: response withheld; it contained a leak]"
     else:
         info["blocked"] = False
         info["answer"] = answer

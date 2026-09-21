@@ -1,24 +1,24 @@
-"""Provenance-aware tool-call gate — an *action* firewall for agents.
+"""Provenance-aware tool-call gate: an *action* firewall for agents.
 
-The rule and ML detectors answer "is this text an injection?" — a question you
+The rule and ML detectors answer "is this text an injection?", a question you
 can lose by rewording the attack. This layer answers a different, phrasing-
 independent question:
 
     "May this ACTION proceed, given the trust of the data that produced it?"
 
 It operationalizes the capability-based defense against *indirect* prompt
-injection — breaking the "lethal trifecta" of (untrusted content) + (a sensitive
+injection: it breaks the "lethal trifecta" of (untrusted content) + (a sensitive
 capability) + (a way out). Even a novel, never-before-seen injection cannot make
 an agent wire funds or exfiltrate a record if the sensitive tool is gated whenever
 its call originates from untrusted content.
 
 Two independent, explainable signals, strongest first:
 
-  1. Argument taint — a sensitive call whose destination argument (recipient,
+  1. Argument taint: a sensitive call whose destination argument (recipient,
      account, URL) *appears in* untrusted content. This is phrasing-independent:
      reword the injection however you like, the exfiltration target still comes
      from the attacker-controlled data, so the action is blocked.
-  2. Capability co-presence — a sensitive call made while untrusted content is in
+  2. Capability co-presence: a sensitive call made while untrusted content is in
      scope and no trusted authorization was given. The coarse backstop when the
      destination is not literally quoted from the untrusted text.
 
@@ -30,7 +30,7 @@ HONEST CONTRACT. This is capability-based defense, not magic: the integrating
 application must (a) declare which tools are sensitive and which of their arguments
 are destinations, and (b) pass the provenance of the data the agent saw (as
 `Segment`s with a `trust` field). In return it gets a guarantee the detectors alone
-cannot give — untrusted data cannot escalate into a gated action, regardless of how
+cannot give: untrusted data cannot escalate into a gated action, regardless of how
 the injection is worded.
 """
 from __future__ import annotations
@@ -56,7 +56,7 @@ _MIN_SUBSTR_LEN = 4
 
 def _alnum(s: str) -> str:
     """Keep only alphanumerics, casefolded. Catches a destination that was split or
-    punctuated inside the untrusted text ("9 9 8 1", "99-81", "9.9.8.1") — the cheap,
+    punctuated inside the untrusted text ("9 9 8 1", "99-81", "9.9.8.1"), the cheap,
     linear half of what the normalization detector does for prose."""
     return "".join(ch for ch in str(s).casefold() if ch.isalnum())
 
@@ -216,7 +216,7 @@ class ToolPolicy:
         call in the same GateSession, which is how taint survives more than one hop.
     content_args: arguments that carry what the action SAYS rather than where it goes
         (body, subject, description). A URL, email or identifier inside them that was
-        copied from untrusted content — and not named by the principal — taints the
+        copied from untrusted content, and not named by the principal, taints the
         call: a phishing link in a message to a legitimate recipient, a passport number
         mailed to the user's own wife. Prose overlap is not traced; copying text is what
         agents are for. Empty => inferred from argument names (body, content, subject…).
@@ -338,8 +338,8 @@ class ToolGate:
         # Derived views of each segment, computed once for every value checked below.
         prepared = {id(seg): _Text(seg.text) for seg in (*trusted, *untrusted)}
 
-        # 1) Argument taint — a destination value quoted from untrusted content.
-        # With no destinations declared, every argument is one — content fields included.
+        # 1) Argument taint: a destination value quoted from untrusted content.
+        # With no destinations declared, every argument is one, content fields included.
         # That is the paranoid dial: an unreviewed policy checks a title quoted verbatim
         # from untrusted text as a destination (it catches AgentDojo's calendar-title
         # payload) and, as the price, blocks a body the user asked to copy from an email
@@ -358,7 +358,7 @@ class ToolGate:
             for scalar in _scalars(value):
                 # Trusted provenance dominates. If the principal named this value
                 # themselves ("refund GB29...", "share it with john@..."), it is theirs
-                # even when an untrusted document also contains it — an attacker cannot
+                # even when an untrusted document also contains it; an attacker cannot
                 # write into the principal's own request. Measured on AgentDojo, this
                 # was 11 of the 34 legitimate tasks the gate used to break.
                 if any(_value_in_untrusted(scalar, prepared[id(seg)]) for seg in trusted):
@@ -373,10 +373,10 @@ class ToolGate:
                         break
                 if hit:
                     break
-        # 1b) Content taint — a traceable token (URL, email, identifier) inside what the
+        # 1b) Content taint: a traceable token (URL, email, identifier) inside what the
         #     action says, copied from untrusted content and not named by the principal.
         #     Measured on AgentDojo: every attack the destination check let through after
-        #     step 1 was exactly this — the recipient was the user's, the payload was not.
+        #     step 1 was exactly this: the recipient was the user's, the payload was not.
         content_fields = policy.content_args or tuple(
             a for a in args if str(a).lower() in _CONTENT_ARG_NAMES)
         for fname in content_fields:
@@ -404,7 +404,7 @@ class ToolGate:
             return GateDecision("block", name, [Detection(
                 "tool_gate", True, 0.95,
                 f"Sensitive tool '{name}' called with a destination taken from untrusted "
-                f"content — tainted action, blocked regardless of wording.{extra}", tainted)])
+                f"content: tainted action, blocked regardless of wording.{extra}", tainted)])
 
         if authorized:
             return GateDecision("allow", name, [Detection(
@@ -412,7 +412,7 @@ class ToolGate:
                 f"Sensitive tool '{name}' explicitly authorized by the trusted principal; "
                 f"no argument traced to untrusted content.", designated)])
 
-        # 2) Capability co-presence — sensitive action while untrusted content is in
+        # 2) Capability co-presence: sensitive action while untrusted content is in
         #    scope and nothing authorized it (breaks the lethal trifecta).
         if untrusted:
             ev = [f"untrusted {s.source}" + (f":{s.domain}" if s.domain else "")
@@ -422,7 +422,7 @@ class ToolGate:
                 f"Sensitive tool '{name}' invoked while untrusted content is in scope "
                 f"and no trusted authorization was given.", ev)])
 
-        # 3) Sensitive, no untrusted content — allow unless authorization is required.
+        # 3) Sensitive, no untrusted content: allow unless authorization is required.
         if policy.requires_authorization:
             return GateDecision("block", name, [Detection(
                 "tool_gate", True, 0.70,
@@ -447,7 +447,7 @@ class GateSession:
     `ToolGate` decides a single call against a fixed context. That is single-hop: it
     catches "the account number is quoted from the poisoned document" and misses "the
     agent fetched a page, the page named the account, and the transfer used *that*".
-    The second shape is the realistic one — untrusted data usually reaches a sensitive
+    The second shape is the realistic one; untrusted data usually reaches a sensitive
     argument through an intermediate tool result.
 
     A session closes that by treating tool results as context with inherited trust:
@@ -455,7 +455,7 @@ class GateSession:
       * a tool declared `returns_untrusted=True` (web fetch, file read, inbox, a table
         of user-supplied records) always produces an untrusted result;
       * any other tool produces an untrusted result if untrusted content was in scope
-        when it ran — the conservative direction, since the model could have copied
+        when it ran, the conservative direction, since the model could have copied
         anything it had read into what it passed on;
       * otherwise the result is trusted and costs nothing later.
 

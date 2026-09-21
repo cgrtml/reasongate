@@ -6,7 +6,7 @@ pattern matching falls apart and the attack slips through.
 
 This layer FLATTENS the attack surface:
   - Unicode NFKC + homoglyph folding (Cyrillic/Greek -> Latin)
-  - Invisible-character stripping (zero-width, bidi, control) — their mere
+  - Invisible-character stripping (zero-width, bidi, control); their mere
     PRESENCE is a strong attack signal on its own
   - Joining token-breaking separators ("i.g.n.o.r.e" -> "ignore")
   - Leetspeak folding ("1gn0re" -> "ignore")
@@ -188,7 +188,7 @@ class NormalizationDetector(Detector):
         # Only an attack that is INVISIBLE in the raw text counts as obfuscated, so when
         # the raw text already matched, every surface scan below would be discarded by
         # the test inside the loop. Skipping them is the same decision at half the regex
-        # work — and the same reasoning drops surfaces identical to a string already
+        # work, and the same reasoning drops surfaces identical to a string already
         # scanned. The input path is the project's dominant cost (RESULTS.md, "Cost per
         # request"): it runs this pattern set once per surface, over the whole input.
         if not raw_hit.matches:

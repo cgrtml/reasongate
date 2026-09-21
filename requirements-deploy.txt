@@ -1,4 +1,4 @@
-# Hosted demo (Render) — rule core only. Zero ML deps, no API keys, free plan OK.
+# Hosted demo (Render): rule core only. Zero ML deps, no API keys, free plan OK.
 # The zero-dependency reasongate core ships in this repo (app adds it to sys.path).
 fastapi>=0.104
 uvicorn>=0.24

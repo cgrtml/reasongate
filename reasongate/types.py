@@ -1,6 +1,6 @@
 """Core data types.
 
-Every detection (Detection) carries a REASON — that is the foundation of the
+Every detection (Detection) carries a REASON; that is the foundation of the
 gate being explainable rather than a black box. Every decision (ShieldResult)
 also converts to a machine-readable, auditable record (to_dict / to_json) with
 a unique decision_id, a UTC timestamp and a schema version, so a SOC/SIEM or an
@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import List, Optional
 
-# Audit record schema version — bumped when the record format changes, so
+# Audit record schema version, bumped when the record format changes, so
 # downstream consumers (SIEM, archive) know which version they are reading.
 AUDIT_SCHEMA_VERSION = "1.0"
 

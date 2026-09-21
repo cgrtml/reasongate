@@ -8,7 +8,7 @@ reports the misses three ways: by language, by attack shape, and as a side-by-si
 of near-identical phrasings where one blocks and one does not.
 
 Everything here comes from the labeled corpus. Nothing is written for the occasion,
-including the examples printed at the end — they are dataset rows, quoted.
+including the examples printed at the end; they are dataset rows, quoted.
 
   python -m eval.misses          # (or: PYTHONPATH=. python eval/misses.py)
 
@@ -35,7 +35,7 @@ _DE = re.compile(r"\b(und|nicht|eine|ich|sie|dich|deine|alle|jetzt|folgende|vorh
                  r"Aufgabe|warum|wie|das|der|die|ist|bitte|vergiss|ignoriere)\b", re.I)
 
 # Attack shapes, matched in order; the first hit wins. These are descriptive labels
-# for reading the misses, not detectors — a prompt that matches nothing lands in the
+# for reading the misses, not detectors; a prompt that matches nothing lands in the
 # last bucket, which is the interesting one.
 SHAPES: List[Tuple[str, str]] = [
     ("act-as utility prompt (label suspect)",

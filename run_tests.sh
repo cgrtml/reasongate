@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ReasonGate test zinciri — hepsini tek komutta calistirir ve ozetler.
+# ReasonGate test zinciri: hepsini tek komutta calistirir ve ozetler.
 #
 #   ./run_tests.sh            # offline + (key varsa) ML + head-to-head
 #   ./run_tests.sh --offline  # sadece offline (anahtar/indirme yok)
@@ -29,7 +29,7 @@ HAS_KEY=0
 if [ -f .env ] && grep -qE '^VOYAGE_API_KEY=\S+' .env; then HAS_KEY=1; fi
 
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║  ReasonGate — test zinciri                                 ║"
+echo "║  ReasonGate: test zinciri                                 ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo "VoyageAI key: $([ $HAS_KEY -eq 1 ] && echo VAR || echo YOK)   |   mod: ${1:-tam}"
 echo

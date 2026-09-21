@@ -69,7 +69,7 @@ def _demo_gate() -> ToolGate:
 
 def test_reworded_attack_slips_past_detection_but_is_stopped_by_the_gate():
     """The point of the second layer: the detector MISSES the reworded attack, yet the
-    action gate still prevents the breach — the invariant that answers 'reword the regex'."""
+    action gate still prevents the breach, the invariant that answers 'reword the regex'."""
     shield = Shield()
     ctx = shield.scan_context(scenario.POISONED_RECORD_REWORDED)
     # 1) Detection genuinely misses it (this is the honest premise, not a failure).

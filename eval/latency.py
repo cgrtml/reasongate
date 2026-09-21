@@ -13,7 +13,7 @@ API key, no network. What is measured:
 
 Prompts come from the two cached public sets (NotInject, `eval/data/real.json`),
 so the short/medium buckets are real text. The long buckets are those same real
-prompts concatenated up to a target size — a document-sized input is what the
+prompts concatenated up to a target size; a document-sized input is what the
 indirect path actually sees, and no public set of those is cached here. That is
 construction, not simulation: it is labeled as such in the output.
 
@@ -80,7 +80,7 @@ def _grow(seed: Sequence[str], target_chars: int) -> str:
 
 
 def _grow_clean(seed: Sequence[str], target_chars: int) -> str:
-    """A document of that size that matches no pattern — the benign-traffic case.
+    """A document of that size that matches no pattern, the benign-traffic case.
 
     Since 0.4.0 the normalization detector skips the obfuscation surfaces when the raw
     text already matched (the same decision, less work). That makes cost depend on which
@@ -274,7 +274,7 @@ def main() -> None:
         for c in cases:
             s = c.stats
             call, _, size = c.label.partition(", ")
-            print(f"| `{call}` | {size or '—'} ({c.note}) | "
+            print(f"| `{call}` | {size or 'n/a'} ({c.note}) | "
                   f"{s['p50'] / 1000:.3f} ms | {s['p95'] / 1000:.3f} ms | "
                   f"{s['p99'] / 1000:.3f} ms |")
         print(f"\nThroughput, {label}, {len(short)}-char prompts: {tp:,.0f} prompts/s. "

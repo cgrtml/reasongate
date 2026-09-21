@@ -1,11 +1,11 @@
 """Independent public benchmark: the over-defense (false-positive) measurement.
 
-NotInject (leolee99/NotInject) — 339 BENIGN prompts, every one seeded with
+NotInject (leolee99/NotInject): 339 BENIGN prompts, every one seeded with
 injection trigger words ("ignore", "system", "bypass"...) while being harmless.
 A good guard must NOT block these. Any block = over-defense (a false positive).
 
 This tests the ReasonGate core layer (rule + normalization) on an INDEPENDENT
-public set — nothing to do with our own test set. Fully offline (no embedding or
+public set, nothing to do with our own test set. Fully offline (no embedding or
 API needed), because all we measure is "did it block".
 
   python eval/public_bench.py        # use the cache if present, otherwise fetch

@@ -1,7 +1,7 @@
 """Turn a model's proposed tool calls into something the gate can authorize.
 
 The gate takes `{"name": str, "args": dict}`. Providers emit their own shapes, and
-the conversion is where an integration usually goes wrong — most often by matching
+the conversion is where an integration usually goes wrong, most often by matching
 on the raw serialized arguments instead of parsing them, which a different JSON
 escaping quietly defeats.
 
@@ -99,7 +99,7 @@ def from_mcp(request: Any) -> List[ToolCall]:
 def refusal_result(call: ToolCall, decision: Any) -> Dict[str, Any]:
     """The tool result to hand back when the gate blocks a call.
 
-    Returning the block as a normal tool result — rather than raising — keeps the
+    Returning the block as a normal tool result, rather than raising, keeps the
     agent loop intact and tells the model why, so it can say so instead of retrying
     the same action. `is_error` is set for providers that use it.
     """

@@ -6,7 +6,7 @@ crosses the line. Single-prompt scanning misses this.
 
 ConversationShield accumulates the risk score of every user turn over the
 session with a time-decayed noisy-OR. Even when no individual turn is blocked,
-the ACCUMULATED risk crossing block_threshold blocks the session — with a reason.
+the ACCUMULATED risk crossing block_threshold blocks the session, with a reason.
 """
 from __future__ import annotations
 

@@ -2,7 +2,7 @@
 
 Deliberately simple and explainable: it looks for known attack phrasings and
 returns every match as the REASON for the decision. Semantic recall for novel,
-never-seen phrasings is explicitly NOT this layer's job — that belongs to the
+never-seen phrasings is explicitly NOT this layer's job; that belongs to the
 embedding-based detector shipped in the separate enterprise add-on (see the
 "What this is not" section of the README).
 
@@ -71,7 +71,7 @@ _PROMPT_TARGET_DE = (r"(?:(?:deine[nsmr]?|ihre[nsmr]?|den|des|dem|das|die)\s+"
                      r"(?:prompt-?texte?s?|prompt|systemnachricht|systemprompt)"
                      r"|prompt-?texte?)")
 
-# (regex, human-readable label, weight)  — labels are shown to users; patterns are not.
+# (regex, human-readable label, weight); labels are shown to users, patterns are not.
 _PATTERNS: List[Tuple[str, str, float]] = [
     # --- Family 1: override the earlier instructions ---
     # Covers the synonym space of "ignore all previous instructions": ignore /

@@ -4,14 +4,14 @@ The question: does the gate still catch an attack once it is OBFUSCATED?
 Produces the "obfuscated recall" row of the honest table in RESULTS.md.
 
 The attacker side is generated INDEPENDENTLY (deliberately WITHOUT using
-reasongate.normalize) — otherwise defense and attack would share code and the
+reasongate.normalize); otherwise defense and attack would share code and the
 test would not be fair. Each base attack (eval.dataset.ATTACKS) is multiplied by
 these evasions:
   leetspeak, letter-spacing, dot-breaking, homoglyphs (Cyrillic), zero-width,
   base64 wrapping, HTML-comment wrapping (indirect).
 
 Run:  python eval/adversarial.py
-Fully offline (no embedding/API) — it measures the rule + normalization layer only.
+Fully offline (no embedding/API); it measures the rule + normalization layer only.
 """
 from __future__ import annotations
 

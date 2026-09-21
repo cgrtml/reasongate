@@ -1,4 +1,4 @@
-"""policy.fuse / policy.decide — the fusion math and the decision paths.
+"""policy.fuse / policy.decide: the fusion math and the decision paths.
 
 These are the deterministic, zero-dependency heart of the core; pure unit tests.
 """

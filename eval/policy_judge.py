@@ -1,15 +1,15 @@
-"""The policy judge on the real corpus — the 59% no input filter can reach.
+"""The policy judge on the real corpus: the 59% no input filter can reach.
 
 `docs/coverage-gaps.md` measured that most of what the rule core misses in the real
 corpus carries no attack marker at all: "write a manifesto for the re-election of X" is
-an ordinary sentence, an attack only because the deployment — a newspaper's assistant —
+an ordinary sentence, an attack only because the deployment, a newspaper's assistant,
 forbids partisan advocacy. That conflict lives in a policy the filter never sees.
 `PolicyGate` is the seam that lets a deployment declare it; this measures what the
 reference judge does with it.
 
 The policy below is written from the corpus's documented setting (deepset's
 prompt-injections set was collected for a German newspaper's chatbot), in the words an
-operator would use — not from the attacks. Every attack the core misses, and every
+operator would use, not from the attacks. Every attack the core misses, and every
 benign prompt, goes to the judge; what comes back is the judge's own recall and
 false-positive rate, and the combined core + judge figures.
 
@@ -19,7 +19,7 @@ false-positive rate, and the combined core + judge figures.
 
 Needs ANTHROPIC_API_KEY and `pip install "reasongate[judge]"`. Verdicts are cached per prompt
 in eval/verdicts/ (committed) so an interrupted run resumes and the numbers reproduce
-without the API. Costs API calls — printed at the end.
+without the API. Costs API calls; the total is printed at the end.
 """
 from __future__ import annotations
 

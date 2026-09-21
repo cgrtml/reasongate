@@ -1,4 +1,4 @@
-"""The reference judge, exercised with a fake client — no network, no SDK required."""
+"""The reference judge, exercised with a fake client: no network, no SDK required."""
 import json
 from types import SimpleNamespace
 

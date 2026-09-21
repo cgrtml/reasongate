@@ -1,4 +1,4 @@
-"""Shield — the model-agnostic security gate.
+"""Shield: the model-agnostic security gate.
 
 Wraps any LLM function (prompt:str -> str):
   1) Runs the input through the input detectors; if blocked, the LLM is NEVER called.
@@ -54,7 +54,7 @@ class Shield:
         # documented fallback).
         self._provenance = registry.load_provenance(cap=provenance_cap)
         # Audit hook: every decision is emitted through it (default: none).
-        # See reasongate.audit (log_sink / file_sink) — enterprise SIEM sinks are
+        # See reasongate.audit (log_sink / file_sink); enterprise SIEM sinks are
         # built on top of this hook in the private layer.
         self.audit_hook = audit_hook
         # Input bound: a security tool must not let huge/pathological input DoS
@@ -62,7 +62,7 @@ class Shield:
         # this limit is truncated BEFORE scanning and recorded in the audit trail.
         self.max_input_chars = int(max_input_chars)
 
-        # Active layers (rule-only, or +ml / +provenance) — for debugging and so
+        # Active layers (rule-only, or +ml / +provenance), for debugging and so
         # an enterprise user can see what is switched on. Stamped on every decision.
         names = [d.name for d in self.input_detectors + self.context_detectors + self.output_detectors]
         if self._provenance is not None:
@@ -104,7 +104,7 @@ class Shield:
 
         segments: str | list[str] | Segment | list[Segment]. Passing Segments
         activates the provenance detector (an origin-based prior); with plain
-        str it stays OFF (the old behavior is preserved exactly — the shipped
+        str it stays OFF (the old behavior is preserved exactly; the shipped
         path carries no risk)."""
         if isinstance(segments, (str, Segment)):
             segments = [segments]
