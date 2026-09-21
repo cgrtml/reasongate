@@ -4,6 +4,19 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); this project aims for semantic
 versioning once it reaches 1.0.
 
+## [Unreleased]
+
+- `eval/agentdojo_gate.py --attack NAME` selects the AgentDojo attack template for the
+  replay (default unchanged); the result records which template ran.
+- `eval/bootstrap_ci.py`: 95% percentile-bootstrap intervals for the replay's three
+  headline numbers from the harness's JSON output.
+- RESULTS.md: one table for all six configurations on the current code with intervals,
+  the same run with schema-drafted policies, and a second attack template
+  (`tool_knowledge`: floor 93.4%, taint-only 8.5%, strict 0.0%). The README's AgentDojo
+  table now shows the current code rather than the 0.4.0 baseline.
+- Every em and en dash in the repository's prose, comments and user-facing strings was
+  rewritten as ordinary punctuation; no behaviour change.
+
 ## [0.6.1] - 2026-09-17
 
 - `reasongate` is now a second name for the `reasongate-mcp` console script, so the

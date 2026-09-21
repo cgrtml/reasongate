@@ -324,13 +324,14 @@ The gate has a number of its own now, on the benchmark built for this threat
 ([AgentDojo](https://github.com/ethz-spylab/agentdojo): four tool-using agent suites,
 attacked through the data the agent reads). There is no model in the loop: the benchmark's
 own ground-truth tool sequences are replayed through the gate as a fully hijacked agent, and
-AgentDojo's own checkers score the result:
+AgentDojo's own checkers score the result (current code, 609 pairs; intervals and a second
+attack template in RESULTS.md):
 
 | | Attack success | Utility on clean traffic |
 |---|---:|---:|
-| No gate | 97.4% | 100% |
-| Argument taint only | **12.6%** | 64.9% |
-| Strict (co-presence) | 3.4% | 41.2% |
+| No gate | 95.6% | 100% |
+| Argument taint only | **8.9%** | 73.2% |
+| Strict (co-presence) | 0.0% | 41.2% |
 
 With a model in the loop (Claude Haiku 4.5, banking) the picture is sharper still: the
 model refused every injection on its own, so the gate added no security and cost 12.5
@@ -346,7 +347,7 @@ untrusted data into a message *body* taint the call, while prose does not; it cl
 the first had opened, 9.5% to 8.9%, without changing a single user task. The table there
 says which pairs paid for each.
 
-Read both columns. The 35 points of utility the gate costs are legitimate destinations the
+Read both columns. The 27 points of utility the gate costs are legitimate destinations the
 agent read from a store, such as the IBAN on the bill it was asked to pay. Taint cannot tell
 those from an attacker's IBAN in the same file, because it does not look at the words. What gets
 through is three documented shapes: goals that are reads, destinations looked up rather

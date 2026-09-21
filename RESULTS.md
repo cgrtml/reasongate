@@ -405,6 +405,75 @@ delivered the injection text; pairs where the user's task never touched the vect
 as not attacked. That moves the no-gate floor from 97.4% to 95.6% (97.5% among the 597 of
 609 pairs that deliver) and leaves earlier rows comparable to within two points.
 
+### The current code, one table
+
+The table at the top of this section is the 0.4.0 baseline and stays as the record of
+where the work started. This one is what the code does today: all six configurations
+re-run on commit 9d8ddec (0.6.1 plus documentation rewrites), hand-declared policies,
+attack `important_instructions`, delivery-aware accounting. Each number carries a 95%
+percentile-bootstrap interval from 2,000 resamples (`eval/bootstrap_ci.py`): user tasks
+are resampled for clean utility, pairs for the other two columns, pooled across suites the
+way the rows are computed.
+
+| Gate | Destinations | Trust map | Utility, clean | Utility, under attack | Attack success (ASR) |
+|---|---|---|---:|---:|---:|
+| off | n/a | n/a | 100.0% | 41.2% [37.3, 45.0] | 95.6% [93.9, 97.0] |
+| taint only | declared | flat | **73.2%** [63.9, 81.4] | 69.0% [65.4, 72.7] | **8.9%** [6.6, 11.0] |
+| taint only | all | flat | 60.8% [51.5, 70.1] | 59.6% [55.7, 63.5] | 6.2% [4.4, 8.2] |
+| taint only | declared | vectors | 76.3% [68.0, 84.5] | 70.9% [67.5, 74.5] | 9.5% [7.4, 12.0] |
+| strict | declared | flat | 41.2% [32.0, 50.5] | 42.7% [38.8, 46.5] | 0.0% [0.0, 0.0] |
+| strict | declared | vectors | 41.2% [32.0, 50.5] | 42.7% [38.4, 46.5] | 0.0% [0.0, 0.0] |
+
+Per suite, taint-only / declared / flat, the configuration a first integration would run:
+
+| Suite | Pairs | ASR, no gate | ASR, gate | Utility clean, gate | User tasks the gate breaks |
+|---|---:|---:|---:|---:|---|
+| banking | 144 | 97.9% | **0.0%** | 81.2% | 3 of 16 |
+| slack | 105 | 100.0% | **0.0%** | 19.0% | 17 of 21 |
+| travel | 120 | 96.7% | 13.3% | 100.0% | 0 of 20 |
+| workspace | 240 | 91.7% | 15.8% | 85.0% | 6 of 40 |
+
+What moved against the 0.4.0 table, and which change moved it: the no-gate floor from
+97.4% to 95.6% (delivery-aware accounting; 97.5% among the 597 of 609 pairs where a tool
+result delivered the injection), taint-only from 12.6% to 8.9% ASR and from 64.9% to 73.2%
+utility (steps 1 to 3 above), strict from 3.4% to 0.0% (outbound reads gated on their
+URL), the `all` scope from 10.0% to 6.2%, the vector-aware map from 12.6% to 9.5% at 76.3%
+utility. Slack is the suite that pays: 17 of 21 user tasks read their channel or their
+recipient from the workspace the attacker also writes into.
+
+**Reading the intervals.** With 97 user tasks, every clean-utility interval is about
+nine points wide either side; with 609 pairs, the ASR intervals are two to three points.
+The differences the text leans on sit outside the intervals: taint against strict, and
+`declared` against `all`, on both axes. One difference does not: the vector-aware map's
+76.3% against the flat map's 73.2% is inside the noise and should not be read as a gain,
+which is the same conclusion the trust-map paragraph above reached from the mechanism.
+
+**Schema-drafted policies, same run** (`--policies auto`, no hand input): taint-only /
+declared / flat 71.1% [61.9, 80.4] utility, 8.9% [6.6, 11.0] ASR; `all` scope 60.8% and
+6.2%; vectors 74.2% and 9.5%; strict 41.2% and 0.0%. The ASR column is identical to the
+hand-declared one in every configuration; the two tasks it costs are the `append_to_file`
+pair described under step 5.
+
+**A second attack template** (`--attack tool_knowledge`, AgentDojo's template that
+phrases the injection around the tools the suite exposes): no-gate floor 93.4% (97.3%
+among 585 delivering pairs), taint-only / declared / flat 8.5% [6.4, 10.7], `all` scope
+5.9% [4.1, 7.9], vectors 9.2% [7.1, 11.7], strict 0.0%. Per suite the gate's ASR is
+15.0% workspace, 13.3% travel, 0.0% banking, 0.0% slack. Clean utility is the same as
+above by construction, because the injection plays no part in it. The template changes
+how the injection is worded and not where its destinations come from, so the gate's
+residual is the same two shapes (looked-up file ids, the calendar title); that is the
+phrasing-independence claim on a second wording, not a robustness result against an
+attacker who adapts to the gate.
+
+Reproduce (offline, about eight minutes for the three runs on an M3 Pro):
+
+```bash
+python eval/agentdojo_gate.py --json hand.json
+python eval/agentdojo_gate.py --policies auto --json auto.json
+python eval/agentdojo_gate.py --attack tool_knowledge --json tk.json
+python eval/bootstrap_ci.py hand.json     # intervals for any of the three
+```
+
 ### With a model in the loop
 
 Same suite, same gate, same policies, but the tool calls come from a model and the gate sits
