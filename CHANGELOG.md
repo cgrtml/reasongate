@@ -219,9 +219,9 @@ that document measures, and the same script re-measures what moved.
   (rule + normalization + indirect-injection + leakage + canary) with a **plugin
   seam**: installing `reasongate-enterprise` auto-enables ML + provenance via entry
   points (`reasongate.detectors`, `reasongate.provenance`); with nothing installed
-  the core runs rule-only, silently. *If you read the arXiv preprint and are looking
-  for the ML/soft-tree code, it lives in the enterprise add-on; the methodology,
-  thresholds, and the reproducible benchmark harness (`eval/`, `RESULTS.md`) stay here.*
+  the core runs rule-only, silently. The ML/soft-tree code lives in the enterprise
+  add-on; the methodology, thresholds, and the reproducible benchmark harness (`eval/`,
+  `RESULTS.md`) stay here.
 - `ShieldResult.layers` reports which layers were active (e.g. `["injection",
   "normalization"]` vs `+["ml_injection", "provenance"]`), also in the audit record.
 - `reasongate.registry`: entry-point plugin loading; a failing plugin is skipped,
