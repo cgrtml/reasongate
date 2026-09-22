@@ -170,16 +170,17 @@ nor quietly accepted as failure.
   afternoon, but a tool named `process_request` that wires money is invisible to name
   inference, and the catalog says so in its own output.
 - **The gate's own cost and limits are now measured, not asserted** (RESULTS.md → *The
-  gate on AgentDojo*). Taint alone: attack success 97.4% → 12.6%, at 35% of the user's own
-  tasks on clean traffic, every one a legitimate destination read from a store the
-  attacker also writes to. Three shapes get through and are limits, not bugs: goals that
-  are *reads* (visit a URL; the gate constrains effects), destinations *looked up* rather
-  than quoted (delete "the largest file" → an id from a listing), and harm in a
-  *non-destination* field (a calendar title), which the `all` destination scope catches
-  at a further utility cost. The second shape is partly an artefact of the replay: the
-  ground truth "knows" the file id, so no listing precedes the delete. A real agent lists
-  files first, the id lands in an untrusted result, and taint sees it. It remains a real
-  limit wherever the lookup goes through a store the gate trusts.
+  gate on AgentDojo*). Taint alone: attack success 95.6% → 3.1%, at 34% of the user's own
+  tasks on clean traffic, every one a legitimate destination or identifier read from a
+  store the attacker also writes to. Two shapes get through and are limits, not bugs:
+  harm in a *non-destination* field (a calendar title; 16 of the 19 surviving pairs),
+  which the `all` destination scope catches at a further utility cost, and a short
+  *identifier the user's own request also contains* ("June 13" vouching for file id 13),
+  where trusted provenance is what lets it pass. Two earlier entries in this list were
+  bugs rather than limits, found by `eval/adaptive.py` and fixed: short ids were compared
+  against whitespace tokens only, so an id quoted as `'13'` never matched, and a URL was
+  canonicalised for scheme and `www.` but not for its path, so one extra path segment
+  defeated the destination check.
 - **Capability proves the action, never the intent.** The gate can say a transfer's
   destination came from an untrusted document. It cannot say whether the user wanted it.
 - **Multi-agent hand-off is out of scope.** Trust is tracked within one session's calls,

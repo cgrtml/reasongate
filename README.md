@@ -273,7 +273,7 @@ value that traces back to untrusted content, because the principal did not choos
 `GateSession(propagation="arguments")` narrows the inheritance rule so that a lookup with
 clean arguments yields a neutral result instead of an untrusted one. Measured on AgentDojo
 it recovers one task and lets nine looked-up destinations through, so the default stays
-`scope`; the numbers are in RESULTS.md.
+`scope`; the numbers are in RESULTS.md, next to the adaptive-attacker measurements.
 
 ### Wiring it into an existing agent
 
@@ -339,7 +339,7 @@ attack template in RESULTS.md):
 | | Attack success | Utility on clean traffic |
 |---|---:|---:|
 | No gate | 95.6% | 100% |
-| Argument taint only | **8.9%** | 73.2% |
+| Argument taint only | **3.1%** | 66.0% |
 | Strict (co-presence) | 0.0% | 41.2% |
 
 With a model in the loop (Claude Haiku 4.5, banking) the picture is sharper still: the
@@ -356,11 +356,14 @@ untrusted data into a message *body* taint the call, while prose does not; it cl
 the first had opened, 9.5% to 8.9%, without changing a single user task. The table there
 says which pairs paid for each.
 
-Read both columns. The 27 points of utility the gate costs are legitimate destinations the
-agent read from a store, such as the IBAN on the bill it was asked to pay. Taint cannot tell
-those from an attacker's IBAN in the same file, because it does not look at the words. What gets
-through is three documented shapes: goals that are reads, destinations looked up rather
-than quoted, and harm in a non-destination field. Method, per-suite numbers, and caveats:
+Read both columns. The 34 points of utility the gate costs are legitimate destinations the
+agent read from a store, such as the IBAN on the bill it was asked to pay or the id of a file
+it found by name. Taint cannot tell those from an attacker's, because it does not look at the
+words. What gets through is two shapes: harm carried in a field that is not a destination (a
+calendar title, 16 of the 19 surviving pairs), and a short identifier the user's own request
+happens to contain, which trusted provenance then vouches for. An adaptive attacker who
+rewrites the destination is measured separately, and found two bugs that are now fixed.
+Method, per-suite numbers, and caveats:
 [RESULTS.md → The gate on AgentDojo](RESULTS.md#the-gate-on-agentdojo).
 
 The reasoning behind this layer (the threat model, why text-detection is structurally
@@ -444,6 +447,7 @@ python eval/head_to_head.py     # vs ProtectAI deberta-v3
 
 # Needs `pip install agentdojo` (Python 3.10+), no key; the action gate on AgentDojo:
 python eval/agentdojo_gate.py   # ASR and utility, gate off / taint / strict
+python eval/adaptive.py --all   # adaptive attackers: rewritten destinations, lookups
 ```
 
 The scripts in the third group exit with an explanation rather than a traceback when the
