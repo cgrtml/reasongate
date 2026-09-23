@@ -105,7 +105,11 @@ came from untrusted content.
   content is in scope is safe but blunt; production use wants explicit authorization
   flows so legitimate sensitive actions are not gated away.
 - **Provenance is the app's responsibility.** If the integrator mislabels untrusted
-  data as trusted, the gate is blind. Garbage provenance in, no protection out.
+  data as trusted, the gate is blind. Garbage provenance in, no protection out. The same
+  rule applies to anything the gate reads from disk: the MCP gateway's shared session file
+  is treated as a source of untrusted text only, never of trust, because a file is not a
+  principal and whoever can write it would otherwise be able to designate an attacker's
+  value as the user's own words.
 
 ## 6. The honest contract
 

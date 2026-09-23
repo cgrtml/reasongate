@@ -211,7 +211,9 @@ claude mcp add docs -- reasongate-mcp -- npx -y @modelcontextprotocol/server-fil
 Any stdio server goes after the second `--`; nothing else changes. If you run more than
 one server, give every entry the same `--session FILE`: a gateway wraps one process, so
 without it each one sees only what passed through it, and a document read through one
-server can be acted on through another. The same line in the
+server can be acted on through another. That file is a trust boundary: it is created
+private to you, everything read from it counts as untrusted whatever the line claims, and
+a file other users can write is refused. Keep it somewhere only you can write. The same line in the
 other two common hosts, where the config is JSON:
 
 ```json

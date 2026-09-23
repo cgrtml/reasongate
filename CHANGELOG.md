@@ -29,6 +29,16 @@ versioning once it reaches 1.0.
   cannot express.
 
 ### Changed
+- **Fixed before release: the shared session file could grant trust.** The first version
+  of `--session` honoured the trust label it read from the file, so anyone who could write
+  that file could mark an attacker's address as the user's own words and walk through the
+  gate, which is the one rule everything else rests on. Everything read from the file is
+  now untrusted whatever it claims, so the worst a writer can do is cause blocks that
+  should not have happened. The file is created 0600 and opened with `O_NOFOLLOW`, and a
+  file writable by other users is refused with an explanation rather than used. Found by
+  reading the feature back as an attacker the same day it was written; it never reached a
+  release, and it is recorded here because a security tool that quietly fixes its own
+  holes is worth less than one that says where they were.
 - **`--session FILE`: one agent run, one context, across several servers.** A host runs
   each server behind its own copy of the gateway, so on its own each copy sees half of what
   the agent read: the instruction arrives through the filesystem server and the send goes

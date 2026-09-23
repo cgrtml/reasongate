@@ -86,6 +86,14 @@ class Gateway:
         # server, and neither instance has both. A shared session file is the join. It
         # holds what untrusted tool results said, appended by whichever instance saw them
         # and read by all of them before the next decision.
+        #
+        # The file is a trust boundary and is treated as one. Everything read from it is
+        # untrusted whatever it claims to be, because a file is not a principal: if a
+        # trust label could be honoured, anyone able to write the file could mark an
+        # attacker's address as the user's own words and walk through the gate. Forcing
+        # untrusted means the worst a writer can do is cause blocks that should not have
+        # happened, which is the failure mode to prefer. The file is created private to
+        # the user and a writable-by-others file is refused.
         self.session_path = session_path
         self.session_limit = session_limit
         self._session_offset = 0
@@ -149,10 +157,16 @@ class Gateway:
         """Append what this instance just learned, so the others can see it."""
         if not self.session_path or getattr(seg, "trust", "untrusted") == "trusted":
             return
-        rec = {"source": getattr(seg, "source", "unknown"), "trust": getattr(seg, "trust", "untrusted"),
+        rec = {"source": getattr(seg, "source", "unknown"),
                "text": getattr(seg, "text", "")[:self.session_limit]}
         try:
-            with open(self.session_path, "a", encoding="utf-8") as fh:
+            # O_NOFOLLOW so a symlink planted at the path cannot redirect the write, and
+            # 0600 so the file is not readable by other users: it holds whatever the
+            # agent's tools returned.
+            fd = os.open(self.session_path,
+                         os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+                         0o600)
+            with os.fdopen(fd, "a", encoding="utf-8") as fh:
                 fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
             self._session_offset = os.path.getsize(self.session_path)
         except OSError:
@@ -188,9 +202,10 @@ class Gateway:
             text = str(rec.get("text") or "")
             if not text:
                 continue
+            # Never honour a trust label from the file: see the note in __init__.
             self.session.add_context(Segment(
                 text=text, source=f"{rec.get('source', 'unknown')} (another server)",
-                trust=str(rec.get("trust") or "untrusted")))
+                trust="untrusted"))
             added += len(text)
         if added and not self.quiet:
             _log(f"picked up {added} chars another server had read")
@@ -443,6 +458,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     cmd = [x for x in a.server if x != "--"]
     if not cmd:
         ap.error("give the MCP server command after --")
+    if a.session and os.path.exists(a.session):
+        mode_bits = os.stat(a.session).st_mode
+        if mode_bits & 0o022:
+            ap.error(f"{a.session} is writable by other users. The session file decides what "
+                     f"the gate treats as data the agent read, so anyone who can write it can "
+                     f"flood it; make it private (chmod 600) or choose another path.")
     gw = Gateway(mode=a.mode, audit_path=a.audit, quiet=a.quiet, trusted_context=a.trust,
                  ask_timeout=a.ask_timeout, session_path=a.session)
     _log(f"gating `{' '.join(cmd)}` (mode={a.mode})")
