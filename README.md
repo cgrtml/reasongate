@@ -448,6 +448,7 @@ python eval/head_to_head.py     # vs ProtectAI deberta-v3
 # Needs `pip install agentdojo` (Python 3.10+), no key; the action gate on AgentDojo:
 python eval/agentdojo_gate.py   # ASR and utility, gate off / taint / strict
 python eval/adaptive.py --all   # adaptive attackers: rewritten destinations, lookups
+python eval/mcp_friction.py     # how often it interrupts ordinary work, real MCP servers
 ```
 
 The scripts in the third group exit with an explanation rather than a traceback when the

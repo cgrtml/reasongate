@@ -79,6 +79,23 @@ def _b64_payloads(text: str) -> List[str]:
 _CONTENT_ARG_NAMES = ("body", "content", "message", "text", "subject", "title", "description",
                       "note", "notes", "comment", "summary", "html", "markdown")
 
+# Content taint applies to tools whose effect leaves the local trust boundary: a message,
+# a post, an upload. A local write is different. Copying a colleague's address out of one
+# file into another inside the directory the server already grants is not a channel out,
+# and tracing it costs a question with no security behind it (measured on the real
+# filesystem server in `eval/mcp_friction.py`: two of twelve ordinary tasks, both of them
+# this shape). The destination check is unaffected, so a path or an identifier an
+# injection chose is still blocked on a local tool.
+_OUTBOUND_EFFECT_RE = re.compile(
+    r"(?:^|[^a-z])(?:send|post|publish|share|upload|email|mail|message|dm|notify|invite|"
+    r"tweet|broadcast|submit|webhook|comment|reply|forward|transfer|pay|webpage|web page|"
+    r"browse|browser|visit|fetch|download|http|curl|wget|navigate)(?:[^a-z]|$)", re.I)
+
+
+def _sends_outbound(name: str) -> bool:
+    """Does this tool's effect carry data outside the local trust boundary?"""
+    return bool(_OUTBOUND_EFFECT_RE.search(re.sub(r"[_\-./]+", " ", str(name))))
+
 # The tokens inside composed content that are worth tracing: addresses and identifiers,
 # not prose. A URL, an email, or a long run with digits (an account, a passport number).
 _CONTENT_TOKEN = re.compile(
@@ -413,8 +430,11 @@ class ToolGate:
         #     action says, copied from untrusted content and not named by the principal.
         #     Measured on AgentDojo: every attack the destination check let through after
         #     step 1 was exactly this: the recipient was the user's, the payload was not.
-        content_fields = policy.content_args or tuple(
-            a for a in args if str(a).lower() in _CONTENT_ARG_NAMES)
+        # A declared content_args list is honoured as written; when nothing is declared,
+        # the arguments are inferred, and only for a tool that sends data outward.
+        content_fields = policy.content_args or (
+            tuple(a for a in args if str(a).lower() in _CONTENT_ARG_NAMES)
+            if _sends_outbound(name) else ())
         for fname in content_fields:
             value = args.get(fname)
             if value is None or fname in fields and fname in policy.destination_args:
@@ -437,10 +457,16 @@ class ToolGate:
             # the argument values an injection may have chosen for it. Authorization
             # does not launder a tainted destination.
             extra = " Authorization covers the action, not attacker-chosen arguments." if authorized else ""
+            # Say which of the two findings it was. The same sentence used to report
+            # "destination" for both, which is wrong in the case a person is most likely
+            # to see: a value copied into what the action says, not into where it goes.
+            where = ("a destination taken from untrusted content"
+                     if any(" originates from untrusted " in t for t in tainted)
+                     else "a value copied from untrusted content into what it says")
             return GateDecision("block", name, [Detection(
                 "tool_gate", True, 0.95,
-                f"Sensitive tool '{name}' called with a destination taken from untrusted "
-                f"content: tainted action, blocked regardless of wording.{extra}", tainted)])
+                f"Sensitive tool '{name}' called with {where}: tainted action, blocked "
+                f"regardless of wording.{extra}", tainted)])
 
         if authorized:
             return GateDecision("allow", name, [Detection(

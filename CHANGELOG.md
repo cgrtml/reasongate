@@ -14,6 +14,26 @@ versioning once it reaches 1.0.
   the host sees an ordinary response. Audit records carry an `outcome` field (`ASK`,
   `allow (user approved)`, `BLOCK (user declined)`). Tested end to end against a fake
   host that answers elicitations.
+- **Content taint applies to tools that send data outward, not to local writes.** A value
+  copied out of one file into another inside the directory a filesystem server already
+  grants is not an exfiltration channel, and tracing it cost a question on two of twelve
+  ordinary tasks against the real `@modelcontextprotocol/server-filesystem`
+  (`eval/mcp_friction.py`). Content arguments are now inferred only for tools whose effect
+  leaves the local boundary (send, post, share, upload, invite, fetch); a declared
+  `content_args` list is still honoured as written, and the destination check is unchanged,
+  so a write whose path an injection chose is blocked as before. Re-run on AgentDojo: every
+  user task and all 609 pairs identical in all six configurations, hand-declared and
+  schema-drafted. Friction on the real servers went to zero, with the attack control still
+  stopped.
+- **The block message names the finding.** It reported "a destination taken from untrusted
+  content" for both findings, including the content case, which is the one a person is most
+  likely to read in an ask dialogue. It now says "a value copied from untrusted content
+  into what it says" when that is what happened.
+- **`eval/mcp_friction.py`: how often the gate interrupts ordinary work.** Real MCP servers
+  (filesystem, git), eighteen tasks written from their documentation, no attacks, plus a
+  poisoned-file control so that a clean result cannot be confused with a gate that never
+  loaded. Reports questions per task, with and without the user's request as trusted
+  context.
 - **`eval/adaptive.py`: the adaptive attackers.** Three moves measured on the same 609
   pairs with no model in the loop: fourteen mechanical rewrites of the attacker's
   destination (reported as gate evasion *and* as end-to-end attack success, because a

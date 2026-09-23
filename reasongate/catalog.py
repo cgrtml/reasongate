@@ -24,7 +24,7 @@ from __future__ import annotations
 import re
 from typing import Iterable, List, Sequence
 
-from reasongate.agent_gate import ToolPolicy, _CONTENT_ARG_NAMES
+from reasongate.agent_gate import ToolPolicy, _CONTENT_ARG_NAMES, _sends_outbound
 
 # Verbs and nouns that mark an irreversible or outward-facing capability: money,
 # messages that leave the system, destruction, code execution, publication.
@@ -83,6 +83,8 @@ def _is_destination_arg(arg: str, tool_words: str = "") -> bool:
 # So a read whose destination is a URL is gated on that destination (and only that), and
 # its result stays untrusted like any other ingest.
 _OUTBOUND_READ = r"webpage|web page|browse|browser|open url|fetch url|visit|download|http|curl|wget|navigate"
+
+
 _URL_ARGS = ("url", "uri", "link", "href", "endpoint", "address", "webhook", "host")
 
 # Membership changes: "add ... participants", "remove ... members", "invite ... attendees".
@@ -93,6 +95,17 @@ _MEMBERSHIP_RE = re.compile(r"\b(?:add|remove|invite|assign|revoke)\b.*\b(?:part
 _SENSITIVE_RE = re.compile(rf"(?:^|[^a-z])(?:{_SENSITIVE})(?:[^a-z]|$)", re.I)
 _OUTBOUND_RE = re.compile(rf"(?:^|[^a-z])(?:{_OUTBOUND_READ})(?:[^a-z]|$)", re.I)
 _INGEST_RE = re.compile(rf"(?:^|[^a-z])(?:{_INGEST})(?:[^a-z]|$)", re.I)
+
+
+def sends_outbound(name: str) -> bool:
+    """Does this tool's effect carry data outside the local trust boundary?
+
+    `send_email`, `post_webpage`, `share_file` do; `write_file`, `edit_file`,
+    `create_directory` do not. Only the first kind gets content arguments inferred: a
+    value copied between two local files is not a channel out. One rule, kept in
+    `reasongate.agent_gate` so the draft and the gate's own fallback cannot drift apart.
+    """
+    return _sends_outbound(name)
 
 
 def _words(name: str) -> str:
@@ -214,7 +227,8 @@ def policies_from_schemas(tools: Iterable) -> List[ToolPolicy]:
             continue
         args = _arg_names(tool)
         p = infer_policy(name, known_args=args)
-        content = tuple(a for a in args if str(a).lower() in _CONTENT_ARG_NAMES)
+        content = (tuple(a for a in args if str(a).lower() in _CONTENT_ARG_NAMES)
+                   if sends_outbound(name) else ())
         out.append(ToolPolicy(name=p.name, sensitive=p.sensitive,
                               destination_args=p.destination_args,
                               requires_authorization=p.requires_authorization,
