@@ -32,12 +32,14 @@ ones the known gateways are actually built for, not because they favour any of t
   the agent calls it. Nothing about it can be traced to anything the agent read.
 - `cross-server`: the agent reads the poisoned document through one server and sends it
   out through a second one. Nobody runs a single MCP server, and a gateway that wraps one
-  process sees one half of that. This family is here because it is the one this gate
-  fails, and a benchmark whose author wins every row is worth nothing.
+  process sees one half of that. This family and `added-tool` are here because they are the
+  ones this gate does not reach, and a benchmark whose author passes every row of it is
+  worth nothing.
 
-The first two are argument-provenance shapes. The last two are server-integrity shapes.
-No gateway I know of covers all four, and the point of the table is to say which covers
-which rather than to declare a winner. Where a scenario is stopped, the benchmark checks
+Some of these are argument-provenance shapes and some are server-integrity shapes, which
+are different controls answering different questions. The output is a coverage map rather
+than a league table: the gateways in it are not competing products, and the point is to
+see which control reaches which risk. Where a scenario is stopped, the benchmark checks
 that the side effect really did not happen, not just that an error came back.
 
 Needs Node for the filesystem server. No API key. Gates that need an LLM guardrail run
