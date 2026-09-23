@@ -62,7 +62,8 @@ def _block_reply(request_id: Any, decision: GateDecision) -> dict:
 
 class Gateway:
     def __init__(self, mode: str = "taint", audit_path: Optional[str] = None,
-                 quiet: bool = False, trusted_context: Optional[List[str]] = None):
+                 quiet: bool = False, trusted_context: Optional[List[str]] = None,
+                 ask_timeout: float = 300.0):
         self.mode = mode
         self.audit_path = audit_path
         self.quiet = quiet
@@ -75,6 +76,8 @@ class Gateway:
         self.asks: Dict[str, Dict[str, Any]] = {}           # elicitation id -> parked tools/call
         self._ask_seq = 0
         self.send_to_server = lambda msg: None              # installed by run(); writes one message
+        self.send_to_client = lambda msg: None
+        self.ask_timeout = ask_timeout                      # a question nobody answers is a block
 
         self._tools_ready = threading.Event()               # cleared while a tools/list is in flight
         self._tools_ready.set()
@@ -102,11 +105,31 @@ class Gateway:
         if not self.quiet or not decision.allowed:
             _log(line)
         if self.audit_path:
+            # Where each argument came from, recorded for allowed calls as much as for
+            # blocked ones: the decision says what the gate did, the trace says what the
+            # agent was working from, and the second is the one an integrator reads when
+            # nothing was blocked at all.
+            try:
+                provenance = self.session.trace(call)
+            except Exception:
+                provenance = {}
             rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "tool": call["name"],
                    "args": call.get("args"), "action": decision.action, "forwarded": forwarded,
-                   "outcome": outcome, "decision": decision.to_dict()}
+                   "outcome": outcome, "provenance": provenance, "decision": decision.to_dict()}
             with open(self.audit_path, "a", encoding="utf-8") as fh:
                 fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+    def _record_result(self, call: dict, seg, text: str) -> None:
+        """One line per tool result, so the report can say what the agent read and which
+        of it the gate treats as untrusted."""
+        rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "tool": call["name"],
+               "event": "result", "trust": getattr(seg, "trust", "untrusted"),
+               "chars": len(text), "preview": text[:160]}
+        try:
+            with open(self.audit_path, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        except Exception:
+            pass
 
     # -- message handling -------------------------------------------------------
 
@@ -157,7 +180,9 @@ class Gateway:
         the client side with our id; `_on_ask_answer` finishes the call either way."""
         self._ask_seq += 1
         ask_id = f"{_ASK_PREFIX}{self._ask_seq}"
-        self.asks[ask_id] = {"request": request, "call": call, "decision": decision}
+        self.asks[ask_id] = {"request": request, "call": call, "decision": decision,
+                             "asked_at": time.monotonic()}
+        self._start_ask_sweeper()
         self.stats["asked"] += 1
         self._record(call, decision, forwarded=False, outcome="ASK")
         # Reason plus the evidence lines (which value, from which tool), so the person
@@ -170,6 +195,31 @@ class Gateway:
                 "allow": {"type": "boolean", "title": f"Run {call['name']}?",
                           "description": "Yes runs the call as proposed; no returns an error to the model.",
                           "default": False}}, "required": ["allow"]}}}
+
+    def _start_ask_sweeper(self) -> None:
+        """A host that shows the question and never answers (the window was closed, the
+        user walked away) would otherwise leave the tool call hanging for ever. After
+        `ask_timeout` the parked call is answered as a block, which is the safe side and
+        is what the model should see."""
+        if self.ask_timeout <= 0 or getattr(self, "_sweeper", None) is not None:
+            return
+
+        def sweep() -> None:
+            while True:
+                time.sleep(1.0)
+                now = time.monotonic()
+                for ask_id, parked in list(self.asks.items()):
+                    if now - parked["asked_at"] < self.ask_timeout:
+                        continue
+                    if self.asks.pop(ask_id, None) is None:
+                        continue                       # answered while we looked
+                    request, call, decision = parked["request"], parked["call"], parked["decision"]
+                    self.stats["blocked"] += 1
+                    self._record(call, decision, forwarded=False, outcome="BLOCK (no answer)")
+                    self.send_to_client(_block_reply(request["id"], decision))
+
+        self._sweeper = threading.Thread(target=sweep, daemon=True)
+        self._sweeper.start()
 
     def _on_ask_answer(self, msg: dict):
         parked = self.asks.pop(msg["id"], None)
@@ -208,7 +258,10 @@ class Gateway:
             return
         call = self.pending.pop(mid, None)
         if call is not None and "result" in msg:
-            self.session.record_result(call, _text_of(msg["result"]))
+            text = _text_of(msg["result"])
+            seg = self.session.record_result(call, text)
+            if self.audit_path:
+                self._record_result(call, seg, text)
 
 
 def _pump(read_lines, handle, forward, reply_to, lock, done) -> None:
@@ -261,7 +314,13 @@ def run(server_cmd: List[str], gw: Gateway) -> int:
             proc.stdin.write((json.dumps(msg, ensure_ascii=False) + "\n").encode("utf-8"))
             proc.stdin.flush()
 
+    def send_to_client(msg: dict) -> None:
+        with lock:
+            client_out.write((json.dumps(msg, ensure_ascii=False) + "\n").encode("utf-8"))
+            client_out.flush()
+
     gw.send_to_server = send_to_server
+    gw.send_to_client = send_to_client
 
     t_client = threading.Thread(target=_pump, args=(client_in, gw.on_client_message, proc.stdin, client_out, lock, done), daemon=True)
     t_server = threading.Thread(target=_pump, args=(proc.stdout, from_server, client_out, proc.stdin, lock, done), daemon=True)
@@ -293,12 +352,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--trust", action="append", default=[],
                     help="text to treat as trusted context (e.g. the user's standing instructions); repeatable")
     ap.add_argument("--quiet", action="store_true", help="log blocks only")
+    ap.add_argument("--ask-timeout", type=float, default=300.0, metavar="SECONDS",
+                    help="in ask mode, how long to wait for the user before treating an "
+                         "unanswered question as a block (default 300; 0 waits for ever)")
     ap.add_argument("server", nargs=argparse.REMAINDER, help="-- <server command> [args...]")
     a = ap.parse_args(argv)
     cmd = [x for x in a.server if x != "--"]
     if not cmd:
         ap.error("give the MCP server command after --")
-    gw = Gateway(mode=a.mode, audit_path=a.audit, quiet=a.quiet, trusted_context=a.trust)
+    gw = Gateway(mode=a.mode, audit_path=a.audit, quiet=a.quiet, trusted_context=a.trust,
+                 ask_timeout=a.ask_timeout)
     _log(f"gating `{' '.join(cmd)}` (mode={a.mode})")
     try:
         return run(cmd, gw)

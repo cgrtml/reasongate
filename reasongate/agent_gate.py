@@ -494,6 +494,60 @@ class ToolGate:
             "tool_gate", False, 0.0,
             f"'{name}' allowed: no untrusted origin in scope.", [])])
 
+    def trace(self,
+              call: ToolCall,
+              context: Iterable[Union[Segment, str]] = ()) -> Dict[str, List[str]]:
+        """Where every argument value of this call came from, without deciding anything.
+
+        The gate answers one question at a time, and only about sensitive tools. This
+        answers a different one, about any tool: for each argument, is the value
+        something the principal wrote, something a tool result contained, or something
+        that appears nowhere the agent has seen? It changes no state and takes no
+        decision; it exists because "why did the agent use *that* value" is a question
+        an integrator asks far more often than "should this be blocked", and the gate
+        already has the provenance to answer it.
+
+        Returns argument name to a list of origins, most trusted first:
+        ``["named by the principal"]``, ``["from tool:read_file"]``, or ``["not seen in
+        anything the agent read"]``.
+        """
+        name = str(call.get("name", "")) if isinstance(call, dict) else str(call)
+        args = dict(call.get("args") or {}) if isinstance(call, dict) else {}
+        trusted, untrusted = [], []
+        for seg in context:
+            if isinstance(seg, Segment):
+                if seg.trust == "trusted":
+                    trusted.append(seg)
+                elif seg.trust != "neutral":
+                    untrusted.append(seg)
+            elif isinstance(seg, str):
+                untrusted.append(Segment(text=seg, source="unknown", trust="untrusted"))
+        prepared = {id(seg): _Text(seg.text) for seg in (*trusted, *untrusted)}
+        out: Dict[str, List[str]] = {}
+        for fname, value in args.items():
+            origins: List[str] = []
+            for scalar in _scalars(value):
+                if not scalar:
+                    continue
+                if any(_value_in_untrusted(scalar, prepared[id(seg)]) for seg in trusted):
+                    origins.append("named by the principal")
+                    continue
+                hit = None
+                for seg in untrusted:
+                    if _value_in_untrusted(scalar, prepared[id(seg)]):
+                        hit = seg.source + (f":{seg.domain}" if seg.domain else "")
+                        break
+                origins.append(f"from {hit}" if hit else "not seen in anything the agent read")
+            # Same origin repeated for every scalar of a list argument is noise.
+            seen, uniq = set(), []
+            for o in origins:
+                if o not in seen:
+                    seen.add(o)
+                    uniq.append(o)
+            if uniq:
+                out[fname] = uniq
+        return out
+
     def authorize_all(self,
                       calls: Sequence[ToolCall],
                       *,
@@ -594,6 +648,10 @@ class GateSession:
     def authorize(self, call: ToolCall, *, authorized: bool = False) -> GateDecision:
         """Authorize one call against everything the agent has seen so far."""
         return self.gate.authorize(call, context=self.context, authorized=authorized)
+
+    def trace(self, call: ToolCall) -> Dict[str, List[str]]:
+        """`ToolGate.trace` against everything this session has seen so far."""
+        return self.gate.trace(call, context=self.context)
 
     def record_result(self,
                       call: ToolCall,

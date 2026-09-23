@@ -4,7 +4,23 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); this project aims for semantic
 versioning once it reaches 1.0.
 
-## [Unreleased]
+## [0.7.0] - 2026-09-23
+
+### Added
+- **`reasongate-audit`: the session, readable.** `reasongate-mcp --audit FILE` now records
+  a line per tool result as well as per decision, and every decision carries the
+  provenance of each argument, for allowed calls as much as for blocked ones.
+  `reasongate-audit FILE` renders that: what the agent read, which results the gate treats
+  as untrusted, and for every argument whether the value was named by the principal, came
+  from a tool result, or was seen nowhere the agent had read. `--summary` and `--blocked`
+  narrow it.
+- **`ToolGate.trace(call, context)` and `GateSession.trace(call)`**: the same provenance
+  question without a decision, and for any tool rather than only sensitive ones. This is
+  the question an integrator asks most often, and the gate already had the answer.
+- **`--ask-timeout`** (default 300 seconds): in ask mode, a question the host never
+  answers becomes a block rather than a tool call that hangs for ever.
+
+### Changed
 
 - **`reasongate-mcp --mode ask`.** Same rules as `taint`, but a tainted call is put to the
   user through MCP elicitation (`elicitation/create`, a boolean `allow` with the tool name

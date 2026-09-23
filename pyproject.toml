@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "reasongate"
-version = "0.6.1"
+version = "0.7.0"
 description = "Explainable, model-agnostic LLM security gate: every block carries a reason."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -25,6 +25,7 @@ dependencies = []
 [project.scripts]
 reasongate-mcp = "reasongate.mcp.gateway:main"
 reasongate = "reasongate.mcp.gateway:main"        # same gateway; lets `uvx reasongate -- <server>` work
+reasongate-audit = "reasongate.mcp.report:main"
 
 [project.optional-dependencies]
 judge = ["anthropic>=1; python_version >= '3.10'"]   # the 1.x SDK needs 3.10+; the core stays 3.9+

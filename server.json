@@ -3,7 +3,7 @@
   "name": "io.github.cgrtml/reasongate",
   "title": "ReasonGate",
   "description": "Provenance gateway for stdio MCP servers: blocks tool calls fed by untrusted tool results.",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "repository": {
     "url": "https://github.com/cgrtml/reasongate",
     "source": "github"
@@ -14,7 +14,7 @@
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "reasongate",
-      "version": "0.6.1",
+      "version": "0.7.0",
       "runtimeHint": "uvx",
       "packageArguments": [
         {
