@@ -476,6 +476,7 @@ python eval/head_to_head.py     # vs ProtectAI deberta-v3
 python eval/agentdojo_gate.py   # ASR and utility, gate off / taint / strict
 python eval/adaptive.py --all   # adaptive attackers: rewritten destinations, lookups
 python eval/mcp_friction.py     # how often it interrupts ordinary work, real MCP servers
+python eval/mcpbench.py         # cost and coverage, against any other MCP gateway
 ```
 
 The scripts in the third group exit with an explanation rather than a traceback when the

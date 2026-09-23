@@ -20,7 +20,23 @@ versioning once it reaches 1.0.
 - **`--ask-timeout`** (default 300 seconds): in ask mode, a question the host never
   answers becomes a block rather than a tool call that hangs for ever.
 
+- **`eval/mcpbench.py`: a benchmark any MCP gateway can enter.** A gateway is a command
+  that wraps a server, so nothing has to be written on its side. It measures cost (ordinary
+  work on the real filesystem server) and coverage (four attack families, two about
+  argument provenance and two about server integrity), with the no-gateway floor validating
+  the task set and every stop confirmed against the side effect rather than the error
+  message. `eval/mcpbench_office.py` is the small server for the shapes a filesystem server
+  cannot express.
+
 ### Changed
+- **A tool description is untrusted content.** It is written by the server rather than the
+  user, and it is the one piece of untrusted text the agent reads before it has read
+  anything, which is what makes line jumping work. The gateway now records the descriptions
+  as an untrusted segment, so an address that appears only there taints the call that uses
+  it, through the same rule as a poisoned document. Found by running the benchmark above
+  against another gateway and losing two columns. Ordinary work stayed at 12 of 12 and the
+  real-server friction measurement stayed at zero; strict mode costs two more tasks,
+  because the descriptions are always in scope.
 
 - **`reasongate-mcp --mode ask`.** Same rules as `taint`, but a tainted call is put to the
   user through MCP elicitation (`elicitation/create`, a boolean `allow` with the tool name
