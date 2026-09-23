@@ -29,6 +29,14 @@ versioning once it reaches 1.0.
   cannot express.
 
 ### Changed
+- **`--session FILE`: one agent run, one context, across several servers.** A host runs
+  each server behind its own copy of the gateway, so on its own each copy sees half of what
+  the agent read: the instruction arrives through the filesystem server and the send goes
+  out through the mail server, and neither instance has both. With the same session file in
+  every entry, whichever instance reads an untrusted result appends it for the others
+  before their next decision. Added after `eval/mcpbench.py` gained a `cross-server` family
+  that the gateway failed. Opt-in, because nothing tells a gateway which processes belong
+  to the same agent run.
 - **A tool description is untrusted content.** It is written by the server rather than the
   user, and it is the one piece of untrusted text the agent reads before it has read
   anything, which is what makes line jumping work. The gateway now records the descriptions

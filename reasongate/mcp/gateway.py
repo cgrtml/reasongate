@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import threading
 import time
@@ -63,7 +64,8 @@ def _block_reply(request_id: Any, decision: GateDecision) -> dict:
 class Gateway:
     def __init__(self, mode: str = "taint", audit_path: Optional[str] = None,
                  quiet: bool = False, trusted_context: Optional[List[str]] = None,
-                 ask_timeout: float = 300.0):
+                 ask_timeout: float = 300.0, session_path: Optional[str] = None,
+                 session_limit: int = 400_000):
         self.mode = mode
         self.audit_path = audit_path
         self.quiet = quiet
@@ -78,6 +80,15 @@ class Gateway:
         self.send_to_server = lambda msg: None              # installed by run(); writes one message
         self.send_to_client = lambda msg: None
         self.ask_timeout = ask_timeout                      # a question nobody answers is a block
+        # One agent, several servers. A host runs each server behind its own copy of this
+        # gateway, so on its own each copy sees half of what the agent read: the document
+        # arrives through the filesystem server and the send goes out through the mail
+        # server, and neither instance has both. A shared session file is the join. It
+        # holds what untrusted tool results said, appended by whichever instance saw them
+        # and read by all of them before the next decision.
+        self.session_path = session_path
+        self.session_limit = session_limit
+        self._session_offset = 0
 
         self._tools_ready = threading.Event()               # cleared while a tools/list is in flight
         self._tools_ready.set()
@@ -132,6 +143,58 @@ class Gateway:
             with open(self.audit_path, "a", encoding="utf-8") as fh:
                 fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
+    # -- the shared session ------------------------------------------------------------
+
+    def _push_shared(self, seg) -> None:
+        """Append what this instance just learned, so the others can see it."""
+        if not self.session_path or getattr(seg, "trust", "untrusted") == "trusted":
+            return
+        rec = {"source": getattr(seg, "source", "unknown"), "trust": getattr(seg, "trust", "untrusted"),
+               "text": getattr(seg, "text", "")[:self.session_limit]}
+        try:
+            with open(self.session_path, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            self._session_offset = os.path.getsize(self.session_path)
+        except OSError:
+            pass                                   # a shared file that cannot be written
+                                                   # must not take the session down
+
+    def _pull_shared(self) -> None:
+        """Read what the other instances have appended since the last call. Only new bytes
+        are read, so the cost does not grow with the length of the session."""
+        if not self.session_path:
+            return
+        try:
+            size = os.path.getsize(self.session_path)
+        except OSError:
+            return
+        if size <= self._session_offset:
+            return
+        try:
+            with open(self.session_path, encoding="utf-8") as fh:
+                fh.seek(self._session_offset)
+                new = fh.read()
+                self._session_offset = fh.tell()
+        except OSError:
+            return
+        added = 0
+        for line in new.splitlines():
+            if not line.strip():
+                continue
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                continue
+            text = str(rec.get("text") or "")
+            if not text:
+                continue
+            self.session.add_context(Segment(
+                text=text, source=f"{rec.get('source', 'unknown')} (another server)",
+                trust=str(rec.get("trust") or "untrusted")))
+            added += len(text)
+        if added and not self.quiet:
+            _log(f"picked up {added} chars another server had read")
+
     def _record_result(self, call: dict, seg, text: str) -> None:
         """One line per tool result, so the report can say what the agent read and which
         of it the gate treats as untrusted."""
@@ -174,6 +237,7 @@ class Gateway:
                 # No tools/list seen yet (host cached it from an earlier run): draft a policy
                 # for this one name so the call is still gated, conservatively.
                 self._install_tools([{"name": call["name"], "inputSchema": {"properties": {k: {} for k in call["args"]}}}])
+            self._pull_shared()
             decision = self.session.authorize(call, authorized=(self.mode in ("taint", "ask")))
             if decision.allowed:
                 self.pending[msg["id"]] = call
@@ -273,6 +337,7 @@ class Gateway:
         if call is not None and "result" in msg:
             text = _text_of(msg["result"])
             seg = self.session.record_result(call, text)
+            self._push_shared(seg)
             if self.audit_path:
                 self._record_result(call, seg, text)
 
@@ -365,6 +430,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--trust", action="append", default=[],
                     help="text to treat as trusted context (e.g. the user's standing instructions); repeatable")
     ap.add_argument("--quiet", action="store_true", help="log blocks only")
+    ap.add_argument("--session", default=None, metavar="FILE",
+                    help="share what the agent has read with the other gateways in the same "
+                         "session. A host runs one gateway per server, so without this each "
+                         "one sees only what passed through it, and an instruction read from "
+                         "one server can be acted on through another")
     ap.add_argument("--ask-timeout", type=float, default=300.0, metavar="SECONDS",
                     help="in ask mode, how long to wait for the user before treating an "
                          "unanswered question as a block (default 300; 0 waits for ever)")
@@ -374,7 +444,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not cmd:
         ap.error("give the MCP server command after --")
     gw = Gateway(mode=a.mode, audit_path=a.audit, quiet=a.quiet, trusted_context=a.trust,
-                 ask_timeout=a.ask_timeout)
+                 ask_timeout=a.ask_timeout, session_path=a.session)
     _log(f"gating `{' '.join(cmd)}` (mode={a.mode})")
     try:
         return run(cmd, gw)
