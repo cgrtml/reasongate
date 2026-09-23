@@ -235,7 +235,8 @@ records.
 What it cannot see: the user's message. MCP carries tool traffic, not the conversation,
 so "a value the user named is theirs" has nothing to consult here unless the host passes
 it (`--trust "…"` adds standing trusted context). The default mode is therefore `taint`
-(destination and content traced to earlier tool results); `--mode strict` also blocks any
+(a destination traced to an earlier tool result on any sensitive tool, and a value copied
+into what an outbound tool says); `--mode strict` also blocks any
 sensitive call once untrusted data is in scope, and will break ordinary tasks. `--mode ask`
 keeps the taint rules but, in a host that supports MCP elicitation, puts a tainted call to
 the user as a yes/no question with the evidence instead of blocking it; on AgentDojo that
@@ -352,7 +353,8 @@ Every change to the gate is re-measured on the same pairs and logged in RESULTS.
 even if an untrusted document also contains it; it took clean utility from 64.9% to 75.3%
 at one point of ASR. The second gated a fetch on where it goes; it took ASR from 13.6% to
 9.5% and strict mode to 0.0%. The third made a phishing link or an identifier copied from
-untrusted data into a message *body* taint the call, while prose does not; it closed what
+untrusted data into the *body* of a message that leaves taint the call, while prose does
+not and a local write does not; it closed what
 the first had opened, 9.5% to 8.9%, without changing a single user task. The table there
 says which pairs paid for each.
 
