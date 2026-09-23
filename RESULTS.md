@@ -658,8 +658,9 @@ gateways cover different halves of the problem and that neither covers the other
 are the shape my own mechanism is built for. A table its author wins is evidence of
 nothing until somebody else runs it, disputes a row, or adds a family I would lose. The
 useful part of this exercise so far is not the score. It is that running it cost me two
-columns on the first attempt and a third when I added the family nobody had asked for, and
-that all three are now visible in one place.
+columns on the first attempt, a third when I added the family nobody had asked for, and a
+fourth when I stopped believing my own clean sweep and wrote the scenario that separates
+server integrity from data provenance. All four are in the table.
 
 **What the table cannot say.** A gateway whose control is to show a tool description to a
 person and ask cannot be judged by a script; the benchmark approves every configuration it
