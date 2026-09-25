@@ -836,6 +836,78 @@ and kept between calls, a 1.9 KB document costs this:
 | after, without the cache | 0.95 ms |
 | after, with the cache | 0.07 ms |
 
+### Reading the gateway against the protocol, not against the attacks it stops
+
+Every measurement above asks the same kind of question: here is an attack, does the gate
+stop it. That question cannot find a defect in the part of the gateway that is not the
+gate. The gateway had grown by about five hundred lines in a week, and none of it had been
+read the other way round: not "does this stop the attack" but "what does this code do when
+the protocol does something ordinary and unexpected".
+
+Six defects, all live, none of them reachable by any attack already in the suite. The
+first is the one that matters most, because it is the failure a security control is not
+allowed to have.
+
+**A gate that could not write its log stopped gating.** The audit record was written from
+inside the block path, before the block reply was returned. The transport pump wrapped
+every handler call in `except Exception`, on the sound principle that a gate must not
+break the session, and passed the message through when one was raised. Those two together
+mean that any failure to write the audit file turns a block into a send. Measured by
+pointing the audit path at a directory: the attacker's mail arrived at the server. The
+principle was right for a message the gate has no opinion about and wrong for a tool call,
+so a tool call the gate could not judge is now answered as an error, and the audit write
+cannot raise in the first place.
+
+**Two tools that were never gated at all.** Policies are drafted from `tools/list`, and
+that list is paginated. Replacing the policy set on each page left the gate holding only
+the last one, so a sensitive tool advertised on page one had no policy, and a tool with no
+policy is not gated. Separately, a call for a name that appeared in no list at all was
+forwarded ungated, because drafting reads the name and an attacker picks the name. Neither
+needed an exotic server: pagination is in the specification, and the second is what an
+added tool looks like from the gateway's side. Policies accumulate by name now, and once a
+list has been answered, a name that was not in it is sensitive on that ground. That is not
+a veto on unknown tools, it is a refusal to hand one a destination the agent read
+somewhere. It does not close the added-tool family, and the coverage map still says
+`through`: a tool whose arguments trace to nothing is out of a provenance gate's reach,
+which is the whole reason that column is in the map.
+
+**An instruction that arrived as an error.** The gateway recorded a tool's result as
+untrusted content and ignored the JSON-RPC error object. A failed call is still a channel,
+because the model reads the error text and acts on it. A server that puts its instruction
+in `error.message` reached the agent by a route nothing was watching, and the send that
+followed went through.
+
+**The shared session file skipped what it existed to carry.** After appending its own
+record, an instance set its read offset to the size of the file, which assumes nothing else
+appended in between. Something else appending is the entire point of `--session`. Any
+record another gateway wrote before that push was stepped over and never read, so the
+cross-server join could silently not happen. The benchmark passed only because of the
+order its scenario happens to use. Lines an instance wrote are now recognised by digest,
+and nothing is skipped by position.
+
+**The report handed the server the terminal.** `reasongate-audit` printed tool names and
+tool output as written. Both come from the server. A terminal reads control characters as
+commands, so an escape sequence in a tool result can erase the line the report has just
+written and paint another in its place, which on a report whose only job is to say what
+was allowed and what was blocked means forging the verdict. Control characters are
+replaced before printing, visibly rather than silently.
+
+| Finding | How it was reachable | Now |
+|---|---|---|
+| An audit write failure forwards a blocked call | any unwritable audit path | fails closed |
+| A tool on an earlier `tools/list` page is ungated | a server that paginates | policies accumulate |
+| A never-advertised tool is ungated | any name the server chooses | sensitive on that ground |
+| An instruction in `error.message` is not recorded | a server that returns an error | recorded as output |
+| The session file skips another gateway's record | ordinary interleaving | recognised by digest |
+| The audit report executes escape sequences | any tool output | control characters replaced |
+
+Each one is now a test, because the point of finding them this way is that the next person
+to touch that code does not have to re-derive them. The measurements did not move: the
+friction tables, the coverage map and all 24 AgentDojo configurations are unchanged, which
+is what you would expect from defects that no attack in the suite could reach. That is the
+argument for reading code against its protocol as well as against its threat model, and it
+is also the honest caveat about every number above them.
+
 ### A coverage map, with another gateway on it
 
 A number about one gate says little when nobody else is measured the same way. So the

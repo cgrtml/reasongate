@@ -27,6 +27,21 @@ _RESET, _DIM, _RED, _YELLOW, _GREEN, _CYAN = (
     "\033[0m", "\033[2m", "\033[31m", "\033[33m", "\033[32m", "\033[36m")
 
 
+def _safe(value: object, limit: int = 0) -> str:
+    """Attacker-controlled text, made safe to print.
+
+    Everything interesting in this file was written by a server: tool names, tool output,
+    argument values. A terminal reads control characters as commands, so a server that
+    puts an escape sequence in a tool result can erase the line this report just wrote and
+    paint its own in place of it, which on a report whose entire job is to say what was
+    allowed and what was blocked means forging the verdict. Control characters are
+    replaced rather than dropped, so that a value containing them still looks wrong.
+    """
+    text = str(value)
+    out = "".join(ch if (ch.isprintable() or ch == " ") else "\ufffd" for ch in text)
+    return out[:limit] if limit else out
+
+
 def _colour(enabled: bool):
     if enabled:
         return _RESET, _DIM, _RED, _YELLOW, _GREEN, _CYAN
@@ -64,8 +79,8 @@ def render(records: Iterable[dict], colour: bool = True, only_blocked: bool = Fa
                 continue
             trust = rec.get("trust", "untrusted")
             tint = yellow if trust == "untrusted" else dim
-            preview = " ".join(str(rec.get("preview", "")).split())[:110]
-            out.append(f"  {tint}result{reset} {rec.get('tool','?')} "
+            preview = _safe(" ".join(str(rec.get("preview", "")).split()), 110)
+            out.append(f"  {tint}result{reset} {_safe(rec.get('tool', '?'), 60)} "
                        f"{dim}({rec.get('chars', 0)} chars, {trust}){reset}")
             if preview:
                 out.append(f"         {dim}{preview}{reset}")
@@ -78,16 +93,16 @@ def render(records: Iterable[dict], colour: bool = True, only_blocked: bool = Fa
             continue
         tint = red if stopped else (yellow if asked else green)
         label = outcome or action
-        out.append(f"{tint}{label:22}{reset} {rec.get('tool','?')}")
+        out.append(f"{tint}{_safe(label, 22):22}{reset} {_safe(rec.get('tool', '?'), 60)}")
         for arg, origins in (rec.get("provenance") or {}).items():
             mark = _origin_mark(origins)
             tint2 = {"tool": yellow, "user": green, "new": cyan}[mark]
-            out.append(f"         {arg}: {tint2}{', '.join(origins)}{reset}")
+            out.append(f"         {_safe(arg, 40)}: {tint2}{_safe(', '.join(str(o) for o in origins), 200)}{reset}")
         for det in (rec.get("decision") or {}).get("detections", []):
             if det.get("triggered"):
-                out.append(f"         {dim}{det.get('reason','')[:150]}{reset}")
+                out.append(f"         {dim}{_safe(det.get('reason', ''), 150)}{reset}")
                 for m in (det.get("matches") or [])[:3]:
-                    out.append(f"         {dim}  {m[:150]}{reset}")
+                    out.append(f"         {dim}  {_safe(m, 150)}{reset}")
     return out
 
 
@@ -143,7 +158,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                  "new": "not seen in anything the agent read"}
         print("argument values: " + ", ".join(
             f"{n} {parts[k]}" for k, n in sorted(s["argument_origins"].items())))
-    busiest = ", ".join(f"{t} x{n}" for t, n in s["tools"].most_common(5))
+    busiest = ", ".join(f"{_safe(t, 60)} x{n}" for t, n in s["tools"].most_common(5))
     if busiest:
         print(f"tools: {busiest}")
     return 0

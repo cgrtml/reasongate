@@ -7,6 +7,8 @@ so a misbehaving server does not take the session down with it.
 from __future__ import annotations
 
 import argparse
+import dataclasses
+import hashlib
 import json
 import os
 import sys
@@ -70,6 +72,9 @@ class Gateway:
         self.audit_path = audit_path
         self.quiet = quiet
         self.gate: Optional[ToolGate] = None
+        self.tool_schemas: Dict[str, dict] = {}         # every tool seen, by name
+        self.listed: set = set()                        # names the server actually advertised
+        self._described: set = set()                    # description lines already recorded
         self.allowed_destinations = list(allowed_destinations or [])
         self.session = GateSession(ToolGate([]), context=[
             Segment(text=t, source="operator", trust="trusted") for t in (trusted_context or [])])
@@ -98,6 +103,8 @@ class Gateway:
         self.session_path = session_path
         self.session_limit = session_limit
         self._session_offset = 0
+        self._own: set = set()                     # digests of lines this instance wrote
+        self._audit_warned = False
 
         self._tools_ready = threading.Event()               # cleared while a tools/list is in flight
         self._tools_ready.set()
@@ -105,8 +112,35 @@ class Gateway:
 
     # -- policy -------------------------------------------------------------
 
-    def _install_tools(self, tools: List[dict]) -> None:
-        policies = policies_from_schemas(tools)
+    def _install_tools(self, tools: List[dict], advertised: bool = True) -> None:
+        """Draft policies for these tools and keep the ones already drafted.
+
+        The obvious version of this replaced the policy set on every tools/list, which is
+        wrong twice over. `tools/list` is paginated, so a server that answers in pages
+        leaves the gate holding only the last one, and a tool on an earlier page is then a
+        tool with no policy, which is a tool that is not gated at all: a sensitive send
+        listed on page one walked straight through. The same replacement happens when a
+        call arrives for a name the gate has not seen and a policy is drafted for it
+        alone. Accumulating by name costs nothing and removes the whole shape. A tool that
+        has since disappeared keeps an inert policy, which is the harmless direction.
+        """
+        for t in tools:
+            if isinstance(t, dict) and t.get("name"):
+                self.tool_schemas[str(t["name"])] = t
+                if advertised:
+                    self.listed.add(str(t["name"]))
+        policies = policies_from_schemas(list(self.tool_schemas.values()))
+        # A tool the server never advertised is a tool nobody approved. Drafting reads the
+        # name, and a name is the attacker's to choose: `unlisted_tool` says nothing, so
+        # nothing is inferred and nothing is gated. Once the server has answered a
+        # tools/list at all, a call for a name that was not in it is treated as sensitive
+        # on that ground alone. It still takes untrusted provenance to stop the call, so
+        # this is not a veto on unknown tools; it is a refusal to hand one a destination
+        # the agent read somewhere.
+        if self.listed:
+            policies = [p if (p.name in self.listed or p.sensitive)
+                        else dataclasses.replace(p, sensitive=True)
+                        for p in policies]
         self.gate = ToolGate(policies, vouched_destinations=(self.mode == "vouch"),
                              allowed_destinations=self.allowed_destinations)
         self.session.gate = self.gate
@@ -120,7 +154,9 @@ class Gateway:
         # same rule as everything else and with no new mechanism.
         described = "\n".join(
             f"{t.get('name', '')}: {t.get('description', '')}" for t in tools
-            if isinstance(t, dict) and t.get("description"))
+            if isinstance(t, dict) and t.get("description")
+            and f"{t.get('name', '')}: {t.get('description', '')}" not in self._described)
+        self._described.update(described.splitlines())
         if described:
             self.session.add_context(Segment(text=described, source="tool descriptions",
                                              trust="untrusted"))
@@ -150,8 +186,7 @@ class Gateway:
             rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "tool": call["name"],
                    "args": call.get("args"), "action": decision.action, "forwarded": forwarded,
                    "outcome": outcome, "provenance": provenance, "decision": decision.to_dict()}
-            with open(self.audit_path, "a", encoding="utf-8") as fh:
-                fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            self._append_audit(rec)
 
     # -- the shared session ------------------------------------------------------------
 
@@ -161,6 +196,16 @@ class Gateway:
             return
         rec = {"source": getattr(seg, "source", "unknown"),
                "text": getattr(seg, "text", "")[:self.session_limit]}
+        line = json.dumps(rec, ensure_ascii=False)
+        # Remember what we wrote instead of skipping past it. Advancing the read offset to
+        # the end of the file after appending assumes nothing else appended in between,
+        # and the whole point of this file is that something else is appending: a record
+        # another gateway wrote in that window was stepped over and never read, which
+        # loses exactly the join the file exists to make. Reading our own line back and
+        # recognising it costs a hash and cannot skip anyone.
+        self._own.add(hashlib.sha256(line.encode("utf-8")).hexdigest())
+        if len(self._own) > 512:
+            self._own.clear()
         try:
             # O_NOFOLLOW so a symlink planted at the path cannot redirect the write, and
             # 0600 so the file is not readable by other users: it holds whatever the
@@ -169,8 +214,7 @@ class Gateway:
                          os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
                          0o600)
             with os.fdopen(fd, "a", encoding="utf-8") as fh:
-                fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
-            self._session_offset = os.path.getsize(self.session_path)
+                fh.write(line + "\n")
         except OSError:
             pass                                   # a shared file that cannot be written
                                                    # must not take the session down
@@ -197,6 +241,8 @@ class Gateway:
         for line in new.splitlines():
             if not line.strip():
                 continue
+            if hashlib.sha256(line.encode("utf-8")).hexdigest() in self._own:
+                continue                           # our own append, already in context
             try:
                 rec = json.loads(line)
             except ValueError:
@@ -215,14 +261,34 @@ class Gateway:
     def _record_result(self, call: dict, seg, text: str) -> None:
         """One line per tool result, so the report can say what the agent read and which
         of it the gate treats as untrusted."""
-        rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "tool": call["name"],
-               "event": "result", "trust": getattr(seg, "trust", "untrusted"),
-               "chars": len(text), "preview": text[:160]}
+        self._append_audit({"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                            "tool": call["name"], "event": "result",
+                            "trust": getattr(seg, "trust", "untrusted"),
+                            "chars": len(text), "preview": text[:160]})
+
+    def _append_audit(self, rec: dict) -> None:
+        """One record, and never an exception.
+
+        Writing the log is not part of deciding, and it used to be able to undo a
+        decision: an audit path that could not be written raised out of the handler, the
+        transport pump treated that as "the gate broke, pass the message through", and a
+        call the gate had just blocked was forwarded to the server. Measured with the
+        audit path pointing at a directory, the attacker's send arrived. The record is
+        written best effort, and the file is created private to the user because it holds
+        tool arguments and the text the agent read.
+        """
+        if not self.audit_path:
+            return
         try:
-            with open(self.audit_path, "a", encoding="utf-8") as fh:
+            fd = os.open(self.audit_path,
+                         os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+                         0o600)
+            with os.fdopen(fd, "a", encoding="utf-8") as fh:
                 fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
         except Exception:
-            pass
+            if not self._audit_warned:
+                self._audit_warned = True
+                _log(f"cannot write the audit file {self.audit_path}; decisions are unaffected")
 
     # -- message handling -------------------------------------------------------
 
@@ -250,10 +316,17 @@ class Gateway:
             # authorized against an empty policy set: wait for the list to land.
             if self.list_ids and not self._tools_ready.wait(timeout=10):
                 _log("tools/list response did not arrive in 10s; authorizing with name-only policies")
-            if self.gate is None:
-                # No tools/list seen yet (host cached it from an earlier run): draft a policy
-                # for this one name so the call is still gated, conservatively.
-                self._install_tools([{"name": call["name"], "inputSchema": {"properties": {k: {} for k in call["args"]}}}])
+            if self.gate is None or call["name"] not in self.gate.policies:
+                # Either no tools/list was seen (the host cached it from an earlier run) or
+                # this name was never in one. A tool with no policy is a tool that is not
+                # gated, so draft one from the arguments in front of us rather than letting
+                # the call through ungated. This also reaches a tool the server never
+                # listed, which is the only part of the added-tool family a provenance
+                # gate can speak to: it cannot tell that the tool is new, but it can still
+                # refuse to send it a destination that came out of untrusted content.
+                self._install_tools([{"name": call["name"],
+                                      "inputSchema": {"properties": {k: {} for k in call["args"]}}}],
+                                     advertised=False)
             self._pull_shared()
             decision = self.session.authorize(call, authorized=(self.mode in ("taint", "ask", "vouch")))
             if decision.allowed:
@@ -351,15 +424,52 @@ class Gateway:
                 self._tools_ready.set()
             return
         call = self.pending.pop(mid, None)
-        if call is not None and "result" in msg:
+        if call is None:
+            return
+        if "result" in msg:
             text = _text_of(msg["result"])
-            seg = self.session.record_result(call, text)
-            self._push_shared(seg)
-            if self.audit_path:
-                self._record_result(call, seg, text)
+        elif isinstance(msg.get("error"), dict):
+            # A failed call is still a channel. The model reads the error text and acts on
+            # it, so a server that puts its instruction in `error.message` instead of in a
+            # result reaches the agent by a route the gate was not watching: measured, the
+            # send went through. An error is recorded like any other tool output.
+            err = msg["error"]
+            text = "\n".join(str(x) for x in (err.get("message"),
+                                               json.dumps(err.get("data"), ensure_ascii=False)
+                                               if err.get("data") is not None else "") if x)
+        else:
+            return
+        seg = self.session.record_result(call, text)
+        self._push_shared(seg)
+        if self.audit_path:
+            self._record_result(call, seg, text)
 
 
-def _pump(read_lines, handle, forward, reply_to, lock, done) -> None:
+_GATE_ERROR_TEXT = ("Blocked by ReasonGate.\nThe gate failed while deciding on this call "
+                    "({error}), and a call it could not judge is not forwarded. Retry, or "
+                    "run without the gate if you have decided this tool is safe.")
+
+
+def _gate_error_reply(msg: dict, exc: BaseException) -> Optional[dict]:
+    """What to send when the gate itself raised on a message from the client.
+
+    Passing the message through was the old answer, on the principle that a gate must not
+    break the transport. That principle is right for a message the gate has no opinion
+    about and wrong for a tool call: it turns any unrelated failure into an allow, and one
+    of them was reachable from outside, since an audit path that could not be written
+    raised from inside the block path and the blocked call went to the server anyway.
+    A tool call the gate could not judge is answered as an error. Everything else still
+    goes through.
+    """
+    if msg.get("method") == "tools/call" and msg.get("id") is not None:
+        return {"jsonrpc": "2.0", "id": msg["id"],
+                "result": {"content": [{"type": "text",
+                                        "text": _GATE_ERROR_TEXT.format(error=type(exc).__name__)}],
+                           "isError": True}}
+    return None
+
+
+def _pump(read_lines, handle, forward, reply_to, lock, done, on_error=None) -> None:
     """Read lines; let `handle` inspect each parsed message; forward the raw line unless
     `handle` returned a reply, which goes back to the sender instead. Runs in a thread."""
     try:
@@ -367,13 +477,15 @@ def _pump(read_lines, handle, forward, reply_to, lock, done) -> None:
             raw = line.rstrip(b"\r\n")
             if not raw:
                 continue
-            reply = None
+            reply, msg = None, None
             try:
                 msg = json.loads(raw.decode("utf-8"))
                 if isinstance(msg, dict):
                     reply = handle(msg)
             except Exception as exc:              # never let the gate break the transport
                 _log(f"passthrough (unparsed or gate error: {type(exc).__name__})")
+                if on_error is not None and isinstance(msg, dict):
+                    reply = on_error(msg, exc)
             if reply is DROP:
                 continue
             with lock:
@@ -417,7 +529,9 @@ def run(server_cmd: List[str], gw: Gateway) -> int:
     gw.send_to_server = send_to_server
     gw.send_to_client = send_to_client
 
-    t_client = threading.Thread(target=_pump, args=(client_in, gw.on_client_message, proc.stdin, client_out, lock, done), daemon=True)
+    t_client = threading.Thread(target=_pump,
+                                args=(client_in, gw.on_client_message, proc.stdin, client_out,
+                                      lock, done, _gate_error_reply), daemon=True)
     t_server = threading.Thread(target=_pump, args=(proc.stdout, from_server, client_out, proc.stdin, lock, done), daemon=True)
     t_client.start(); t_server.start()
     done.wait()                                   # either side closing ends the session

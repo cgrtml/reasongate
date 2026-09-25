@@ -105,3 +105,20 @@ def test_file_sink_writes_jsonl(tmp_path):
     assert len(lines) == 2
     rec = json.loads(lines[1])
     assert rec["action"] == "block"
+
+
+def test_the_report_does_not_hand_a_server_the_terminal():
+    """Everything interesting in an audit file was written by a server: tool names, tool
+    output, argument values. A terminal reads control characters as commands, so an escape
+    sequence in a tool result can erase the line the report just wrote and paint its own
+    over it, which on a report whose job is to say what was allowed and what was blocked
+    means forging the verdict."""
+    from reasongate.mcp.report import render
+
+    esc = chr(27)
+    payload = "ok" + esc + "[2K\rallow" + " " * 16 + "send_email" + esc + "[32m clean" + esc + "[0m"
+    lines = render([{"event": "result", "tool": "read_file" + esc + "]8;;http://evil.example" + chr(7),
+                     "trust": "untrusted", "chars": 40, "preview": payload}], colour=False)
+    assert lines, "the record still renders"
+    assert not any(esc in line for line in lines), "an escape sequence reached the terminal"
+    assert any("ok" in line for line in lines), "the value is still shown, just declawed"

@@ -84,6 +84,34 @@ versioning once it reaches 1.0.
   cannot express.
 
 ### Fixed
+- **A gate that could not write its log stopped gating.** The audit write raised from
+  inside the block path, the transport pump treated any exception as "the gate broke, pass
+  the message through", and a call the gate had just blocked went to the server. Measured
+  with the audit path pointing at a directory: the attacker's send arrived. Audit records
+  are written best effort now, and a tool call the gate could not judge is answered as an
+  error instead of being forwarded. The audit file is also created private to the user,
+  like the session file, because it holds every argument and a preview of everything read.
+- **A tool listed on an earlier page was not gated.** `tools/list` is paginated and the
+  policy set was replaced on each page, so the gate ended up holding only the last one.
+  A tool with no policy is a tool that is not gated: a sensitive send listed on page one
+  walked through. Policies accumulate by name now.
+- **A tool the server never advertised was not gated.** Policies are drafted from names,
+  and the name is the server's to choose, so one that says nothing is inferred to be
+  nothing. Once a `tools/list` has been answered, a call for a name that was not in it is
+  treated as sensitive on that ground alone. It still takes untrusted provenance to stop
+  the call.
+- **An instruction returned as an error reached the agent unseen.** A failed call is still
+  a channel: the model reads `error.message` and acts on it. Errors are recorded as tool
+  output like results, and the send that followed one is now blocked.
+- **The shared session file stepped over other gateways' records.** The read offset was
+  advanced to the end of the file after appending, which assumes nothing else appended in
+  between, and something else appending is the whole point of the file. A record another
+  gateway wrote in that window was skipped and never read, losing exactly the join
+  `--session` exists to make. Lines this instance wrote are recognised by digest instead.
+- **`reasongate-audit` handed a server the terminal.** Tool names and tool output are
+  written by the server and were printed raw, so an escape sequence could erase the line
+  the report had just written and paint its own over it, forging the report's own verdict.
+  Control characters are replaced before printing.
 - **A URL's userinfo is not its destination.** `http://good.example@evil.example/drop` is
   a request to evil.example that reads as a request to good.example. The host check
   rejected any authority containing an `@` as probably an email address, and that guard is
