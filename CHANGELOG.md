@@ -20,6 +20,22 @@ versioning once it reaches 1.0.
 - **`--ask-timeout`** (default 300 seconds): in ask mode, a question the host never
   answers becomes a block rather than a tool call that hangs for ever.
 
+- **Fixed: a dictated path with a dot-dot segment bypassed the destination check.** A
+  filesystem server given `notes/sub/../backup.txt` writes `notes/backup.txt` and does not
+  need `sub` to exist, because it normalises before writing. The gate compared the string
+  as handed, so the attacker's file appeared on disk. Path-shaped values are now
+  normalised on both sides. Found by `eval/adaptive_mcp.py`, which runs the gateway in
+  front of the real server and confirms a bypass by looking at the disk rather than at the
+  error message.
+- **Fixed: a mail tag bypassed it too.** `user+tag@example.com` reaches
+  `user@example.com` on most providers, so a tag added to an address named in the
+  injection walked past a literal comparison. Sub-addressing is stripped before matching;
+  Gmail's dot rule is left alone, because applying one provider's convention everywhere
+  would match addresses that really are different elsewhere.
+- **`eval/adaptive_mcp.py`: an attacker with the gate's answers, against a real server.**
+  Twenty rewrites over three families, each with a control row, and the effect confirmed
+  against the filesystem rather than asserted. Neither fix above changed anything on
+  AgentDojo: every task and all 609 pairs identical.
 - **`eval/mcpbench.py`: a benchmark any MCP gateway can enter.** A gateway is a command
   that wraps a server, so nothing has to be written on its side. It measures cost (ordinary
   work on the real filesystem server) and coverage (four attack families, two about

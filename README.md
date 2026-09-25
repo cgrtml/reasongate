@@ -482,6 +482,7 @@ python eval/agentdojo_gate.py   # ASR and utility, gate off / taint / strict
 python eval/adaptive.py --all   # adaptive attackers: rewritten destinations, lookups
 python eval/mcp_friction.py     # how often it interrupts ordinary work, real MCP servers
 python eval/mcpbench.py         # cost and coverage, against any other MCP gateway
+python eval/adaptive_mcp.py     # rewritten destinations against a real server
 ```
 
 The scripts in the third group exit with an explanation rather than a traceback when the

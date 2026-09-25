@@ -43,6 +43,7 @@ from reasongate.types import Detection, Segment
 
 
 _WORD_RE = re.compile(r"[^\W_]+", re.UNICODE)
+_WORD_SPLIT = re.compile(r"[\s,;<>()\[\]\"']+")
 
 
 def _norm(s: str) -> str:
@@ -143,6 +144,55 @@ def _url_key(s: str) -> str:
     return k
 
 
+_PATHY = re.compile(r"[/\\]")
+_ADDR = re.compile(r"^([^@\s]+)@([^@\s]+)$")
+
+
+def _address_key(value: str) -> str:
+    """An address with the part a mail system ignores removed.
+
+    `user+anything@example.com` is delivered to `user@example.com` on most providers, so
+    an injection that names the plain address and a call that adds a tag are the same
+    destination. Found by an attacker with the gate's answers in front of it
+    (`eval/adaptive_mcp.py`). The dot trick in Gmail local parts is deliberately not
+    normalised: it is one provider's rule, and applying it everywhere would match two
+    addresses that really are different on most others. Returns "" for anything that is
+    not address shaped.
+    """
+    m = _ADDR.match(_norm(value))
+    if not m:
+        return ""
+    local, domain = m.group(1), m.group(2).rstrip(".")
+    return f"{local.split('+', 1)[0]}@{domain}"
+
+
+def _path_key(value: str) -> str:
+    """A path with the segments a filesystem resolves away already resolved.
+
+    A server given "notes/sub/../backup.txt" writes "notes/backup.txt", and it does not
+    need "sub" to exist: it normalises first. A destination check that compares the string
+    it was handed therefore misses a dictated path written with one dot-dot segment, which
+    is a bypass with a real effect on disk (measured in `eval/adaptive_mcp.py`). Returns ""
+    for a value that is not path shaped, so nothing else pays for this.
+    """
+    if not _PATHY.search(value):
+        return ""
+    raw = value.replace("\\", "/")
+    lead = "/" if raw.startswith("/") else ""
+    out: List[str] = []
+    for seg in raw.split("/"):
+        if seg in ("", "."):
+            continue
+        if seg == "..":
+            if out and out[-1] != "..":
+                out.pop()
+            elif not lead:
+                out.append("..")
+            continue
+        out.append(seg)
+    return _norm(lead + "/".join(out))
+
+
 def _url_host(s: str) -> str:
     """The host of a URL-shaped value, or "" if it does not look like one. The path is
     what an attacker varies for free once the host is fixed: a destination written as
@@ -165,7 +215,7 @@ class _Text:
     2 KB document per token made a six-token message cost 1.2 ms; computed once per
     segment per call it is back under 0.05 ms. Decision-identical by construction.
     """
-    __slots__ = ("raw", "_norm", "_tokens", "_alnum", "_urls", "_b64")
+    __slots__ = ("raw", "_norm", "_tokens", "_alnum", "_urls", "_b64", "_paths", "_addrs")
 
     def __init__(self, raw: str):
         self.raw = raw
@@ -174,6 +224,8 @@ class _Text:
         self._alnum = None
         self._urls = None
         self._b64 = None
+        self._paths = None
+        self._addrs = None
 
     @property
     def norm(self) -> str:
@@ -196,6 +248,20 @@ class _Text:
         if self._alnum is None:
             self._alnum = _alnum(self.raw)
         return self._alnum
+
+    @property
+    def addresses(self) -> str:
+        if self._addrs is None:
+            self._addrs = " ".join(
+                _address_key(tok) or tok for tok in _WORD_SPLIT.split(self.norm) if tok)
+        return self._addrs
+
+    @property
+    def paths(self) -> str:
+        if self._paths is None:
+            self._paths = " ".join(
+                _path_key(tok) or tok for tok in self.norm.split())
+        return self._paths
 
     @property
     def urls(self) -> str:
@@ -234,6 +300,17 @@ def _value_in_untrusted(value: str, text: Union[str, "_Text"]) -> bool:
     # check makes, and the utility cost of it is measured in RESULTS.md.
     vh = _url_host(v)
     if len(vh) >= _MIN_SUBSTR_LEN and vh in prepared.urls:
+        return True
+
+    # ... or only because of a segment a filesystem resolves away. Both sides are
+    # normalised, because the dot segments can be on either one.
+    vp = _path_key(value)
+    if len(vp) >= _MIN_SUBSTR_LEN and (vp in prepared.norm or vp in prepared.paths):
+        return True
+
+    # ... or only because of a tag a mail system ignores.
+    va = _address_key(value)
+    if len(va) >= _MIN_SUBSTR_LEN and (va in prepared.norm or va in prepared.addresses):
         return True
 
     # The value survived the literal check. Two cheap transforms an attacker gets
