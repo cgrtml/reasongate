@@ -276,13 +276,16 @@ def run_suite(suite_name: str, suite, mode: str, scope: str, trust: str = "flat"
               policies: str = "hand", attack_name: str = ATTACK, propagation: str = "scope") -> dict:
     tool_names = [t.name for t in suite.tools]
     reachable = attacker_reachable_tools(suite) if trust == "vectors" else None
+    vouched = mode == "vouched"
+    gate_mode = "taint" if vouched else mode
     if mode == "off":
         gate = None
     elif policies == "auto":
-        gate = ToolGate(policies_auto(suite, scope, reachable))
+        gate = ToolGate(policies_auto(suite, scope, reachable), vouched_destinations=vouched)
     else:
-        gate = ToolGate(policies_for(suite_name, tool_names, scope, reachable))
-    pipeline = GatedReplay(gate, mode, propagation)
+        gate = ToolGate(policies_for(suite_name, tool_names, scope, reachable),
+                        vouched_destinations=vouched)
+    pipeline = GatedReplay(gate, gate_mode, propagation)
     attack = load_attack(attack_name, suite, pipeline)
 
     utility_clean: Dict[str, bool] = {}
@@ -371,6 +374,8 @@ def main() -> None:
                     help="hand: POLICIES declared in this file; auto: drafted from tool schemas")
     ap.add_argument("--attack", default=ATTACK,
                     help="AgentDojo attack template for the replay (default important_instructions)")
+    ap.add_argument("--vouched", action="store_true",
+                    help="measure the vouched-destination mode against taint on the same pairs")
     ap.add_argument("--propagation", default="scope", choices=["scope", "arguments"],
                     help="how a tool result inherits trust in the session: scope (default) or arguments")
     args = ap.parse_args()
@@ -380,6 +385,12 @@ def main() -> None:
     configs = [("off", "declared", "flat"), ("taint", "declared", "flat"), ("taint", "all", "flat"),
                ("taint", "declared", "vectors"), ("strict", "declared", "flat"),
                ("strict", "declared", "vectors")]
+    if args.vouched:
+        # The question this mode answers is different, so it gets its own row rather than
+        # replacing one: a destination must be named by the principal or vouched for by
+        # the deployment, and a value that appears nowhere does not run.
+        configs = [("off", "declared", "flat"), ("taint", "declared", "flat"),
+                   ("vouched", "declared", "flat"), ("vouched", "declared", "vectors")]
 
     results = []
     for mode, scope, trust in configs:
@@ -400,7 +411,8 @@ def main() -> None:
         uc = sum(r["utility_clean"] * r["user_tasks"] for r in rows) / sum(r["user_tasks"] for r in rows)
         ua = sum(r["utility_under_attack"] * r["pairs"] for r in rows) / pairs
         asr = sum(r["asr"] * r["pairs"] for r in rows) / pairs
-        label = {"off": "off", "taint": "taint only", "strict": "strict"}[mode]
+        label = {"off": "off", "taint": "taint only", "strict": "strict",
+                 "vouched": "vouched destinations"}[mode]
         print(f"| {label} | {scope} | {trust} | {100*uc:.1f}% | {100*ua:.1f}% | {100*asr:.1f}% |")
 
     if args.json:

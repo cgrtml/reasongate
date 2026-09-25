@@ -265,7 +265,12 @@ so "a value the user named is theirs" has nothing to consult here unless the hos
 it (`--trust "…"` adds standing trusted context). The default mode is therefore `taint`
 (a destination traced to an earlier tool result on any sensitive tool, and a value copied
 into what an outbound tool says); `--mode strict` also blocks any
-sensitive call once untrusted data is in scope, and will break ordinary tasks. `--mode ask`
+sensitive call once untrusted data is in scope, and will break ordinary tasks. `--mode vouch` answers a
+question taint cannot: it refuses a destination that is neither one you named nor one you
+allowed with `--allow`, which is what stops an injection that *describes* an address
+instead of writing it, since a described value appears nowhere to be traced. It needs you
+to say where your agent may send things, and with an empty list it refuses everything;
+RESULTS.md has what it costs. `--mode ask`
 keeps the taint rules but, in a host that supports MCP elicitation, puts a tainted call to
 the user as a yes/no question with the evidence instead of blocking it; on AgentDojo that
 is about one question in every two tasks instead of one broken task in three, and on the

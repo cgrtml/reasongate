@@ -276,6 +276,20 @@ class _Text:
         return self._b64
 
 
+def _vouched(value: str, entry: str) -> bool:
+    """Does this destination match an allowed entry? An entry beginning with "@" or "."
+    covers a whole domain or suffix; anything else is compared whole, after the same
+    canonicalisation the taint check uses, so an allowed address cannot be evaded by a
+    mail tag or a path written with dot segments."""
+    v, e = _norm(value), _norm(entry)
+    if not v or not e:
+        return False
+    if e.startswith(("@", ".", "/")):
+        return v.endswith(e) or _address_key(v).endswith(e) or _path_key(v).startswith(e)
+    return v == e or _address_key(v) == _address_key(e) or (
+        bool(_path_key(v)) and _path_key(v) == _path_key(e))
+
+
 def _value_in_untrusted(value: str, text: Union[str, "_Text"]) -> bool:
     prepared = text if isinstance(text, _Text) else _Text(text)
     v = _norm(value)
@@ -339,6 +353,10 @@ class ToolPolicy:
     returns_untrusted: the tool brings outside data in (web fetch, file read, inbox,
         database of user-supplied records). Its result is untrusted for every later
         call in the same GateSession, which is how taint survives more than one hop.
+    allowed_destinations: destination values a deployment vouches for outright (the
+        user's own address, an internal domain, a directory the attacker cannot write to).
+        Only consulted when the gate is asked for vouched destinations; a suffix match, so
+        "@northwind.example" covers every address in that domain.
     content_args: arguments that carry what the action SAYS rather than where it goes
         (body, subject, description). A URL, email or identifier inside them that was
         copied from untrusted content, and not named by the principal, taints the
@@ -352,6 +370,7 @@ class ToolPolicy:
     requires_authorization: bool = False
     returns_untrusted: bool = False
     content_args: Tuple[str, ...] = ()
+    allowed_destinations: Tuple[str, ...] = ()
 
 
 @dataclass
@@ -398,13 +417,31 @@ class ToolGate:
                  policies: Union[Sequence[ToolPolicy], Dict[str, ToolPolicy], None] = None,
                  *,
                  default_sensitive: bool = False,
-                 fail_closed: bool = True):
+                 fail_closed: bool = True,
+                 vouched_destinations: bool = False,
+                 allowed_destinations: Iterable[str] = ()):
         if isinstance(policies, dict):
             self.policies = dict(policies)
         else:
             self.policies = {p.name: p for p in (policies or [])}
         self.default_sensitive = default_sensitive
         self.fail_closed = fail_closed
+        # Two ways to be wrong about a destination, and until now only one of them was
+        # checked. Taint answers "did this value come out of untrusted content", which
+        # assumes the attacker's destination appears in that content verbatim. It need not.
+        # An injection that *describes* the address, or spells it out, or points at a
+        # signature block, leaves the model to write the canonical form, and the canonical
+        # form appears nowhere: nothing to trace, nothing to block. Measured on six
+        # description styles, four walked through.
+        #
+        # `vouched_destinations` asks the other question: is this value justified? A
+        # destination must be one the principal named or one the deployment vouched for,
+        # and a value that appears nowhere does not run. That turns the open set of things
+        # an attacker might say into a closed set of places an action may go, which is the
+        # only answer to a described destination that does not depend on reading the
+        # description. Its cost is in RESULTS.md, and it is not small.
+        self.vouched_destinations = vouched_destinations
+        self.allowed_destinations = tuple(allowed_destinations)
 
     def _policy_for(self, name: str) -> ToolPolicy:
         p = self.policies.get(name)
@@ -476,6 +513,7 @@ class ToolGate:
         # (two tasks in the same benchmark). Declaring destination_args is the review
         # that resolves it either way; content is then traced by token only.
         fields = policy.destination_args or tuple(args.keys())
+        allow_list = tuple(policy.allowed_destinations) + self.allowed_destinations
         tainted: List[str] = []
         designated: List[str] = []
         for fname in fields:
@@ -493,6 +531,15 @@ class ToolGate:
                 # was 11 of the 34 legitimate tasks the gate used to break.
                 if any(_value_in_untrusted(scalar, prepared[id(seg)]) for seg in trusted):
                     designated.append(f"{fname}={scalar!r} named in trusted context")
+                    continue
+                # A destination the deployment vouched for is safe wherever the agent read
+                # it. Saying "our own domain is fine" and then blocking a reply to a
+                # colleague because their address arrived in an email is not a security
+                # property, it is a bug: the attacker gains nothing by naming a place the
+                # deployment already controls. Measured on the mail tasks, this is half
+                # the friction that mode otherwise costs.
+                if any(_vouched(scalar, entry) for entry in allow_list):
+                    designated.append(f"{fname}={scalar!r} is an allowed destination")
                     continue
                 hit = False
                 for seg in untrusted:
@@ -544,6 +591,28 @@ class ToolGate:
                 "tool_gate", True, 0.95,
                 f"Sensitive tool '{name}' called with {where}: tainted action, blocked "
                 f"regardless of wording.{extra}", tainted)])
+
+        if self.vouched_destinations:
+            unvouched: List[str] = []
+            for fname in fields:
+                value = args.get(fname)
+                if value is None:
+                    continue
+                for scalar in _scalars(value):
+                    if not scalar:
+                        continue
+                    if any(_value_in_untrusted(scalar, prepared[id(seg)]) for seg in trusted):
+                        continue
+                    if any(_vouched(scalar, entry) for entry in allow_list):
+                        continue
+                    unvouched.append(f"{fname}={scalar!r} is in neither the principal's "
+                                     f"request nor the allowed destinations")
+            if unvouched:
+                return GateDecision("block", name, [Detection(
+                    "tool_gate", True, 0.9,
+                    f"Sensitive tool '{name}' called with a destination nothing vouches for. "
+                    f"A value that appears nowhere the agent was told to look cannot be "
+                    f"traced, so it is refused rather than allowed by default.", unvouched)])
 
         if authorized:
             return GateDecision("allow", name, [Detection(

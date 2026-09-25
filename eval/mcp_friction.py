@@ -353,12 +353,15 @@ def reason_of(reply: dict) -> str:
     return text.splitlines()[1][:160] if len(text.splitlines()) > 1 else ""
 
 
-def run_tasks(server_cmd: List[str], tasks: List[dict], informed: bool) -> List[dict]:
+def run_tasks(server_cmd: List[str], tasks: List[dict], informed: bool,
+              mode: str = "taint", allow: Optional[List[str]] = None) -> List[dict]:
     """One gateway session per task: a task is a conversation, and trust does not carry
     across conversations."""
     out = []
     for task in tasks:
-        cmd = [sys.executable, "-m", "reasongate.mcp", "--quiet"]
+        cmd = [sys.executable, "-m", "reasongate.mcp", "--quiet", "--mode", mode]
+        for dest in (allow or []):
+            cmd += ["--allow", dest]
         if informed:
             cmd += ["--trust", task["request"]]
         cmd += ["--"] + server_cmd
@@ -413,6 +416,9 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--json", default=None)
     ap.add_argument("--only", default=None, choices=["filesystem", "git", "workplace"])
+    ap.add_argument("--mode", default="taint", choices=["taint", "vouch"],
+                    help="taint (default) or the vouched-destination mode, which is reported "
+                         "with and without the obvious allowance a deployment would make")
     args = ap.parse_args()
 
     results = []
@@ -421,14 +427,34 @@ def main() -> None:
         with open(os.path.join(work, name), "w", encoding="utf-8") as fh:
             fh.write(body)
 
-    if args.only in (None, "filesystem"):
+    if args.mode != "vouch" and args.only in (None, "filesystem"):
         server = ["npx", "-y", "@modelcontextprotocol/server-filesystem", work]
         tasks = filesystem_tasks(work)
         print(f"filesystem server, {len(tasks)} ordinary tasks, no attacks, workspace {work}")
         results.append(summarise("filesystem, gate blind to the user's request", run_tasks(server, tasks, informed=False)))
         results.append(summarise("filesystem, user's request passed as trusted context", run_tasks(server, tasks, informed=True)))
 
-    if args.only in (None, "workplace"):
+    if args.mode == "vouch":
+        # The mode refuses a destination nothing vouches for, so the cost depends entirely
+        # on what the deployment vouches for. Both ends are reported: nothing allowed, and
+        # the one allowance a deployment running these servers would obviously make.
+        fs_server = ["npx", "-y", "@modelcontextprotocol/server-filesystem", work]
+        fs_tasks = filesystem_tasks(work)
+        print(f"filesystem server, vouched destinations, {len(fs_tasks)} ordinary tasks")
+        results.append(summarise("filesystem, vouched, nothing allowed",
+                                 run_tasks(fs_server, fs_tasks, informed=True, mode="vouch")))
+        results.append(summarise(f"filesystem, vouched, the served directory allowed",
+                                 run_tasks(fs_server, fs_tasks, informed=True, mode="vouch",
+                                           allow=[work])))
+        wp_server = [sys.executable, os.path.join(REPO, "eval", "mcp_workplace.py")]
+        wp_tasks = workplace_tasks()
+        print(f"\nmail and calendar server (a mock), vouched destinations, {len(wp_tasks)} tasks")
+        results.append(summarise("mail and calendar, vouched, nothing allowed",
+                                 run_tasks(wp_server, wp_tasks, informed=True, mode="vouch")))
+        results.append(summarise("mail and calendar, vouched, the company domain allowed",
+                                 run_tasks(wp_server, wp_tasks, informed=True, mode="vouch",
+                                           allow=["@northwind.example"])))
+    elif args.only in (None, "workplace"):
         server = [sys.executable, os.path.join(REPO, "eval", "mcp_workplace.py")]
         tasks = workplace_tasks()
         print(f"\nmail and calendar server (a mock; no real one runs without an account), "
@@ -438,7 +464,7 @@ def main() -> None:
         results.append(summarise("mail and calendar, user's request passed as trusted context",
                                  run_tasks(server, tasks, informed=True)))
 
-    if args.only in (None, "git"):
+    if args.mode != "vouch" and args.only in (None, "git"):
         git_python = os.environ.get("RG_GIT_PYTHON", sys.executable)
         try:
             subprocess.run([git_python, "-c", "import mcp_server_git"], check=True,

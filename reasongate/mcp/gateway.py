@@ -65,11 +65,12 @@ class Gateway:
     def __init__(self, mode: str = "taint", audit_path: Optional[str] = None,
                  quiet: bool = False, trusted_context: Optional[List[str]] = None,
                  ask_timeout: float = 300.0, session_path: Optional[str] = None,
-                 session_limit: int = 400_000):
+                 session_limit: int = 400_000, allowed_destinations: Optional[List[str]] = None):
         self.mode = mode
         self.audit_path = audit_path
         self.quiet = quiet
         self.gate: Optional[ToolGate] = None
+        self.allowed_destinations = list(allowed_destinations or [])
         self.session = GateSession(ToolGate([]), context=[
             Segment(text=t, source="operator", trust="trusted") for t in (trusted_context or [])])
         self.pending: Dict[Any, Dict[str, Any]] = {}       # request id -> {"name", "args"}
@@ -106,7 +107,8 @@ class Gateway:
 
     def _install_tools(self, tools: List[dict]) -> None:
         policies = policies_from_schemas(tools)
-        self.gate = ToolGate(policies)
+        self.gate = ToolGate(policies, vouched_destinations=(self.mode == "vouch"),
+                             allowed_destinations=self.allowed_destinations)
         self.session.gate = self.gate
         self.stats["tools"] = len(policies)
         # A tool description is written by the server, not by the user, so it is untrusted
@@ -253,7 +255,7 @@ class Gateway:
                 # for this one name so the call is still gated, conservatively.
                 self._install_tools([{"name": call["name"], "inputSchema": {"properties": {k: {} for k in call["args"]}}}])
             self._pull_shared()
-            decision = self.session.authorize(call, authorized=(self.mode in ("taint", "ask")))
+            decision = self.session.authorize(call, authorized=(self.mode in ("taint", "ask", "vouch")))
             if decision.allowed:
                 self.pending[msg["id"]] = call
                 self._record(call, decision, forwarded=True)
@@ -436,11 +438,17 @@ def run(server_cmd: List[str], gw: Gateway) -> int:
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(prog="reasongate-mcp",
                                  description="Run an MCP server behind ReasonGate's action gate (stdio).")
-    ap.add_argument("--mode", default="taint", choices=["taint", "strict", "ask"],
+    ap.add_argument("--mode", default="taint", choices=["taint", "strict", "ask", "vouch"],
                     help="taint: block destinations/content traced to untrusted tool results (default); "
                          "strict: also block any sensitive call once untrusted data is in scope; "
                          "ask: same rules as taint, but a tainted call is put to the user through "
-                         "MCP elicitation instead of blocked (hosts without elicitation get a block)")
+                         "MCP elicitation instead of blocked (hosts without elicitation get a block); "
+                         "vouch: a destination must be one the user named or one you allowed, so a "
+                         "value the agent got from a description rather than from text goes nowhere")
+    ap.add_argument("--allow", action="append", default=[], metavar="DEST",
+                    help="a destination this deployment vouches for, for --mode vouch. A leading "
+                         "@ or / covers a domain or a directory (@northwind.example, /srv/notes); "
+                         "repeatable")
     ap.add_argument("--audit", default=None, help="append one JSON decision record per tool call to this file")
     ap.add_argument("--trust", action="append", default=[],
                     help="text to treat as trusted context (e.g. the user's standing instructions); repeatable")
@@ -464,8 +472,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             ap.error(f"{a.session} is writable by other users. The session file decides what "
                      f"the gate treats as data the agent read, so anyone who can write it can "
                      f"flood it; make it private (chmod 600) or choose another path.")
+    if a.mode == "vouch" and not a.allow and not a.trust:
+        _log("mode=vouch with no --allow and no --trust: every destination will be refused")
     gw = Gateway(mode=a.mode, audit_path=a.audit, quiet=a.quiet, trusted_context=a.trust,
-                 ask_timeout=a.ask_timeout, session_path=a.session)
+                 ask_timeout=a.ask_timeout, session_path=a.session, allowed_destinations=a.allow)
     _log(f"gating `{' '.join(cmd)}` (mode={a.mode})")
     try:
         return run(cmd, gw)

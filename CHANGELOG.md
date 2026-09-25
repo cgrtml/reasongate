@@ -20,6 +20,24 @@ versioning once it reaches 1.0.
 - **`--ask-timeout`** (default 300 seconds): in ask mode, a question the host never
   answers becomes a block rather than a tool call that hangs for ever.
 
+- **`vouched_destinations`, and the assumption it exists to repair.** Taint asks whether a
+  value came out of untrusted content, which assumes the attacker's destination appears in
+  that content verbatim. It need not: an injection that describes the address, spells it
+  out, or points at a signature block leaves the model to write the canonical form, and the
+  canonical form appears nowhere. Four of six description styles walked through.
+  `ToolGate(vouched_destinations=True)`, `--mode vouch` with `--allow`, asks the other
+  question instead: a destination must be one the principal named or one the deployment
+  allowed, and a value that appears nowhere does not run. All six styles are refused.
+  Measured: nothing changes on AgentDojo, because its attackers always name the
+  destination; on the real filesystem server the mode costs 0.00 questions per task once
+  the served directory is allowed, and on the mail tasks it costs 0.10 against the 0.40 of
+  the rule it replaces. With nothing allowed it refuses almost everything, so it is not the
+  default.
+- **Fixed: an allowed destination was blocked by taint.** A deployment could say "our own
+  domain is fine" and still be stopped from replying to a colleague whose address arrived
+  in an email. An allowlist that does not survive taint is not an allowlist; the attacker
+  gains nothing from a place the deployment already controls. Three of the four mail
+  interruptions were this.
 - **Fixed: a dictated path with a dot-dot segment bypassed the destination check.** A
   filesystem server given `notes/sub/../backup.txt` writes `notes/backup.txt` and does not
   need `sub` to exist, because it normalises before writing. The gate compared the string
