@@ -1,5 +1,5 @@
-# Tum yapilandirma pyproject.toml'da. Bu shim yalnizca eski pip/setuptools
-# surumlerinde 'pip install -e .' (editable) icin geriye-donuk uyumluluk saglar.
+# Every setting lives in pyproject.toml. This shim exists only so that older pip and
+# setuptools versions can still run `pip install -e .`.
 from setuptools import setup
 
 setup()
