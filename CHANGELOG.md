@@ -32,6 +32,12 @@ versioning once it reaches 1.0.
   injection walked past a literal comparison. Sub-addressing is stripped before matching;
   Gmail's dot rule is left alone, because applying one provider's convention everywhere
   would match addresses that really are different elsewhere.
+- **`eval/mcp_workplace.py` and mail and calendar tasks in `eval/mcp_friction.py`.** The
+  friction measurement ran only against servers with no destinations, which is where a
+  destination check has nothing to do. Ten ordinary mail and calendar tasks put a number on
+  the case that matters: 0.40 questions per task, four of ten tasks interrupted, all four
+  the gate working as declared. The server is a mock, because none of the real ones run
+  without an account, and every number from it says so.
 - **`eval/adaptive_mcp.py`: an attacker with the gate's answers, against a real server.**
   Twenty rewrites over three families, each with a control row, and the effect confirmed
   against the filesystem rather than asserted. Neither fix above changed anything on

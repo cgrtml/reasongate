@@ -554,6 +554,27 @@ indistinguishable from a gate that failed to load.
 |---|---:|---:|---|
 | filesystem, 12 tasks, 20 calls | 0.00 | 0 of 12 | stopped |
 | git, 6 tasks, 8 calls | 0.00 | 0 of 6 | n/a |
+| mail and calendar, 10 tasks, 17 calls | **0.40** | 4 of 10 | n/a |
+
+**The zero on the first two rows is a weak result on its own**, because neither of those
+servers sends anything anywhere: a control on destinations has nothing to do where there
+are no destinations. The work where it should cost something is mail and calendar, where
+the recipient of a reply comes out of the inbox and the identifier of an event comes out
+of a search. There is no mail or calendar MCP server that runs without an account, so that
+row is a mock, modelled on what the published servers expose rather than on what would
+flatter the gate, and its number is 0.40 questions per task.
+
+The four interruptions are one shape in two dresses. Two are a reply or a follow-up whose
+recipient came out of the inbox or the contact directory. Two are a calendar change whose
+event identifier came out of a listing. All four are the gate working as declared, and all
+four are a real cost: a person doing ordinary mail work would be asked four times in ten
+tasks. Two of them deserve a finer answer than this design can give. Replying to whoever
+sent you a message is not exfiltration in any threat model worth the name, because the
+sender already knows their own address; what is dangerous is a recipient taken from the
+*body* of a message rather than from its envelope. The gate sees a tool result as flat
+text and cannot tell the two apart, and MCP gives it nothing structured to work with.
+Naming that is the honest position; pretending the cost is zero because the filesystem
+server has no recipients is not.
 
 **This is not the number the first run gave, and the difference is the finding.** Two of
 the twelve filesystem tasks were stopped: *write a file containing the board address from
@@ -576,7 +597,17 @@ gateway cannot see the user's message, and I had assumed that was the dominant c
 practice. Passing the request as trusted context (`--trust`) changed nothing here: when a
 user says "the board address from the meeting notes" they do not name the value, so
 trusted dominance has nothing to match. It mattered on AgentDojo because those users name
-their recipients. And a question that does arrive now says what it found: the message used
+their recipients.
+
+The mail and calendar row says the same thing more sharply, and it is worth stating as a
+general limit rather than an observation about one mock. `--trust` recovered none of the
+four interruptions there either, because the requests are *"reply to Dana"*, *"the person
+on the finance team"*, *"the product sync"*. People name things by description; the rule
+that a value the principal named is theirs only fires when the principal wrote the literal
+value. That rule recovered ten tasks on AgentDojo, where the user prompts do contain
+literal addresses, and it recovers nothing in work phrased the way people actually phrase
+it. Any deployment counting on it should check which of the two its own traffic looks
+like. And a question that does arrive now says what it found: the message used
 to report a "destination" for both findings, including the content case it is most likely
 to show.
 
