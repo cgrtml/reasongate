@@ -684,6 +684,42 @@ send things, which many cannot, and with an empty list it refuses everything. It
 `--mode vouch` with `--allow` on the gateway, and the numbers above are the whole argument
 for and against it.
 
+### The idea that would have fixed the rest, and why it does not
+
+One interruption survives everything above: *"move the product sync to 13 May"*. The agent
+lists the calendar, the identifier of the meeting comes back in an untrusted result, and
+the reschedule is blocked. This is the looked-up destination in its purest form, and it is
+the largest remaining cost in the whole project: people name things by description and the
+agent has to turn the description into an identifier.
+
+There is an obvious repair, and it is worth writing down because it is obvious. The user
+said "product sync" and the line of the listing that carried the identifier says `Product
+sync`. So look at the *record* the value came out of rather than the value alone: if the
+line carrying it also carries the principal's own words, the principal designated that
+record. On a two-line listing it does exactly what it should, taking the meeting the user
+named and refusing the board meeting next to it.
+
+On the benchmark it is a disaster:
+
+| Rule | Utility, clean | Attack success |
+|---|---:|---:|
+| taint | 66.0% | **3.1%** |
+| record designation | 71.1% | **15.3%** |
+
+Five user tasks recovered, seventy-four attack pairs lost. The reason is structural rather
+than a matter of tuning: an injection lives inside the document the user asked about, so
+the record that carries the attacker's destination carries the user's words too. Every
+sentence of the request that makes the rule work for the legitimate record also makes it
+work for the attacker's.
+
+The code is kept, off, with those numbers in the comment beside it, and the gateway does
+not expose it. A negative result is worth more when it can be re-run than when it is
+described, and an option measured to raise attack success fivefold is not an option a
+product should offer. The interruption it would have fixed is still there, and the honest
+answers to it remain the ones already measured: a deployment that can say which stores the
+attacker cannot write into gets it back through the trust map, and a host that can ask the
+user gets it back as one question.
+
 ### An attacker with the gate's answers, against a real server
 
 The rewrites above are fixed and the replay has no real tool underneath, so neither can

@@ -277,14 +277,16 @@ def run_suite(suite_name: str, suite, mode: str, scope: str, trust: str = "flat"
     tool_names = [t.name for t in suite.tools]
     reachable = attacker_reachable_tools(suite) if trust == "vectors" else None
     vouched = mode == "vouched"
-    gate_mode = "taint" if vouched else mode
+    by_record = mode == "record"
+    gate_mode = "taint" if (vouched or by_record) else mode
     if mode == "off":
         gate = None
     elif policies == "auto":
-        gate = ToolGate(policies_auto(suite, scope, reachable), vouched_destinations=vouched)
+        gate = ToolGate(policies_auto(suite, scope, reachable), vouched_destinations=vouched,
+                        designate_by_record=by_record)
     else:
         gate = ToolGate(policies_for(suite_name, tool_names, scope, reachable),
-                        vouched_destinations=vouched)
+                        vouched_destinations=vouched, designate_by_record=by_record)
     pipeline = GatedReplay(gate, gate_mode, propagation)
     attack = load_attack(attack_name, suite, pipeline)
 
@@ -374,6 +376,9 @@ def main() -> None:
                     help="hand: POLICIES declared in this file; auto: drafted from tool schemas")
     ap.add_argument("--attack", default=ATTACK,
                     help="AgentDojo attack template for the replay (default important_instructions)")
+    ap.add_argument("--record", action="store_true",
+                    help="measure record designation: a value whose record carries the principal's "
+                         "own words counts as designated rather than tainted")
     ap.add_argument("--vouched", action="store_true",
                     help="measure the vouched-destination mode against taint on the same pairs")
     ap.add_argument("--propagation", default="scope", choices=["scope", "arguments"],
@@ -385,7 +390,10 @@ def main() -> None:
     configs = [("off", "declared", "flat"), ("taint", "declared", "flat"), ("taint", "all", "flat"),
                ("taint", "declared", "vectors"), ("strict", "declared", "flat"),
                ("strict", "declared", "vectors")]
-    if args.vouched:
+    if args.record:
+        configs = [("off", "declared", "flat"), ("taint", "declared", "flat"),
+                   ("record", "declared", "flat"), ("record", "declared", "vectors")]
+    elif args.vouched:
         # The question this mode answers is different, so it gets its own row rather than
         # replacing one: a destination must be named by the principal or vouched for by
         # the deployment, and a value that appears nowhere does not run.
@@ -412,7 +420,7 @@ def main() -> None:
         ua = sum(r["utility_under_attack"] * r["pairs"] for r in rows) / pairs
         asr = sum(r["asr"] * r["pairs"] for r in rows) / pairs
         label = {"off": "off", "taint": "taint only", "strict": "strict",
-                 "vouched": "vouched destinations"}[mode]
+                 "vouched": "vouched destinations", "record": "record designation"}[mode]
         print(f"| {label} | {scope} | {trust} | {100*uc:.1f}% | {100*ua:.1f}% | {100*asr:.1f}% |")
 
     if args.json:

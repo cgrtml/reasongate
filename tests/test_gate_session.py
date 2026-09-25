@@ -529,3 +529,26 @@ def test_an_allowed_destination_survives_taint():
                              authorized=True).allowed
     assert not session.authorize({"name": "send_email", "args": {"to": "archive@evil.tld"}},
                                  authorized=True).allowed
+
+
+def test_record_designation_is_off_and_stays_off():
+    """A measured negative result kept reproducible rather than deleted. Treating a value
+    as designated because the record that carried it also carries the principal's words
+    recovers five AgentDojo tasks and takes attack success from 3.1% to 15.3%, because an
+    injection sits inside the document the user asked about. The gateway does not expose
+    it; this test is the reminder of why."""
+    policies = [ToolPolicy("list_events", sensitive=False, returns_untrusted=True),
+                ToolPolicy("reschedule", sensitive=True, destination_args=("event_id",))]
+    listing = ("id: e1 | 10:00 | Product sync | dana@northwind.example\n"
+               "id: e9 | 15:00 | Board meeting | ceo@northwind.example")
+
+    def run(**kw):
+        session = GateSession(ToolGate(policies, **kw), context=[
+            Segment(text="Move the product sync to 13 May.", source="user", trust="trusted")])
+        session.record_result({"name": "list_events", "args": {}}, listing)
+        return (session.authorize({"name": "reschedule", "args": {"event_id": "e1"}}, authorized=True).allowed,
+                session.authorize({"name": "reschedule", "args": {"event_id": "e9"}}, authorized=True).allowed)
+
+    assert run() == (False, False), "the default blocks a looked-up identifier either way"
+    assert run(designate_by_record=True) == (True, False), "the experiment discriminates here"
+    # and on the benchmark it does not, which is why it is not a feature.

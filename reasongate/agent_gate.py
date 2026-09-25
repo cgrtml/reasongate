@@ -276,6 +276,37 @@ class _Text:
         return self._b64
 
 
+_STOPWORDS = frozenset("""
+the and for with from that this into your their there here what when where which will
+shall should would could please thank thanks kindly about above after again against
+between before being been have has had does did doing then than them they were was
+are you our not all any can may must need send make move take give find show tell
+new old one two get set use its it's a an of to in on at by is be as or if so we me my
+""".split())
+
+
+def _distinctive(text: str) -> set:
+    """The words in a request that could identify one record rather than any record."""
+    return {t for t in _WORD_RE.findall(_norm(text))
+            if len(t) >= 4 and t not in _STOPWORDS and not t.isdigit()}
+
+
+def _record_around(text: str, value: str) -> str:
+    """The line of a tool result that carried this value. A listing puts one record per
+    line, which is what makes this a record rather than a window, so the line breaks have
+    to survive: the usual normalisation collapses them and would turn a whole listing into
+    one record, which matches everything and designates everything."""
+    target = _norm(value)
+    if not target:
+        return ""
+    for line in str(text).splitlines():
+        flat = _norm(line)
+        if target in flat or (_path_key(target) and _path_key(target) in flat) or (
+                _address_key(target) and _address_key(target) in flat):
+            return flat
+    return ""
+
+
 def _vouched(value: str, entry: str) -> bool:
     """Does this destination match an allowed entry? An entry beginning with "@" or "."
     covers a whole domain or suffix; anything else is compared whole, after the same
@@ -419,7 +450,9 @@ class ToolGate:
                  default_sensitive: bool = False,
                  fail_closed: bool = True,
                  vouched_destinations: bool = False,
-                 allowed_destinations: Iterable[str] = ()):
+                 allowed_destinations: Iterable[str] = (),
+                 designate_by_record: bool = False):
+        # designate_by_record is an experiment with a published negative result; see below.
         if isinstance(policies, dict):
             self.policies = dict(policies)
         else:
@@ -442,6 +475,17 @@ class ToolGate:
         # description. Its cost is in RESULTS.md, and it is not small.
         self.vouched_destinations = vouched_destinations
         self.allowed_destinations = tuple(allowed_destinations)
+        # MEASURED AND REJECTED. Keep this off. People name things by description rather
+        # than by value ("move the product sync"), the agent turns the description into an
+        # identifier by looking it up, and taint then stops the work the principal asked
+        # for. The tempting repair is to look at the record the value came out of: if the
+        # line that carried it also carries the principal's own words, treat it as
+        # designated. On AgentDojo that recovers five user tasks and takes attack success
+        # from 3.1% to 15.3%, because an injection lives inside the very document the user
+        # asked about, so the attacker's record carries the user's words too. It is kept
+        # here, off, and deliberately not exposed by the gateway, so the negative result
+        # stays reproducible without being reachable by accident.
+        self.designate_by_record = designate_by_record
 
     def _policy_for(self, name: str) -> ToolPolicy:
         p = self.policies.get(name)
@@ -545,6 +589,15 @@ class ToolGate:
                 for seg in untrusted:
                     if _value_in_untrusted(scalar, prepared[id(seg)]):
                         origin = seg.source + (f":{seg.domain}" if seg.domain else "")
+                        if self.designate_by_record and trusted:
+                            record = _record_around(seg.text, scalar)
+                            asked = set().union(*(_distinctive(t.text) for t in trusted))
+                            shared = asked & _distinctive(record)
+                            if len(shared) >= 2:
+                                designated.append(
+                                    f"{fname}={scalar!r} identifies the record the principal "
+                                    f"described ({', '.join(sorted(shared)[:3])})")
+                                break
                         tainted.append(f"{fname}={scalar!r} originates from untrusted {origin}")
                         hit = True
                         break

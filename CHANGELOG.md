@@ -20,6 +20,13 @@ versioning once it reaches 1.0.
 - **`--ask-timeout`** (default 300 seconds): in ask mode, a question the host never
   answers becomes a block rather than a tool call that hangs for ever.
 
+- **Measured and rejected: designating a destination by the record it came from.** People
+  name things by description, the agent looks the description up, and taint stops the work
+  the principal asked for. Treating a value as designated when the line that carried it
+  also carries the principal's own words recovers five AgentDojo tasks and takes attack
+  success from 3.1% to 15.3%, because an injection sits inside the document the user asked
+  about and its record carries the user's words too. Kept off, not exposed by the gateway,
+  and reproducible from the library so the negative result survives.
 - **`vouched_destinations`, and the assumption it exists to repair.** Taint asks whether a
   value came out of untrusted content, which assumes the attacker's destination appears in
   that content verbatim. It need not: an injection that describes the address, spells it
