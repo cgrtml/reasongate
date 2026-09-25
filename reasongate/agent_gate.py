@@ -35,7 +35,10 @@ the injection is worded.
 """
 from __future__ import annotations
 
+import functools
+import ipaddress
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
@@ -47,9 +50,18 @@ _WORD_SPLIT = re.compile(r"[\s,;<>()\[\]\"']+")
 
 
 def _norm(s: str) -> str:
-    """Casefold + collapse whitespace, so taint matching is not defeated by
-    trivial spacing/case differences between the argument and the source text."""
-    return " ".join(str(s).casefold().split())
+    """Compatibility-normalise, casefold, collapse whitespace, so taint matching is not
+    defeated by trivial spacing, case or width differences between the argument and the
+    source text.
+
+    NFKC is there because a host written in fullwidth Latin reaches the same server as
+    the ASCII one: IDNA maps the two together before a name is ever looked up, so a
+    destination check that compares the code points misses a rewrite the network does
+    not. It is the same argument as the one for casefolding, one layer further down."""
+    t = str(s)
+    if not t.isascii() and not unicodedata.is_normalized("NFKC", t):
+        t = unicodedata.normalize("NFKC", t)
+    return " ".join(t.casefold().split())
 
 
 # Minimum length for a destination value to be matched as a substring. Shorter
@@ -145,7 +157,16 @@ def _url_key(s: str) -> str:
 
 
 _PATHY = re.compile(r"[/\\]")
-_ADDR = re.compile(r"^([^@\s]+)@([^@\s]+)$")
+# Address shaped, and nothing else. The local part excludes the characters that mean a
+# URL rather than a mailbox: without that, "http://evil.example/x?u=@corp.example" parses
+# as an address at corp.example, which is how a value claimed an allowlist entry it had
+# no right to (`eval/canon_probe.py`, the allowlist family).
+_ADDR = re.compile(r"^([^@\s:/\\?#]+)@([^@\s:/\\?#]+\.[^@\s:/\\?#]+)$")
+
+# An address written so that it is not one until a reader puts it back together. A model
+# asked to send mail does exactly that, so the two spellings name one destination.
+_DEFANG_DOT = re.compile(r"\s*[\(\[\{]\s*(?:dot|\.)\s*[\)\]\}]\s*|\s+dot\s+", re.I)
+_DEFANG_AT = re.compile(r"\s*[\(\[\{]\s*(?:at|@)\s*[\)\]\}]\s*|\s+at\s+", re.I)
 
 
 def _address_key(value: str) -> str:
@@ -193,18 +214,96 @@ def _path_key(value: str) -> str:
     return _norm(lead + "/".join(out))
 
 
+_DEC = re.compile(r"[0-9]+$")
+_HEX = re.compile(r"0x[0-9a-f]+$")
+_OCT = re.compile(r"0[0-7]*$")
+
+
+def _ipv4_key(host: str) -> str:
+    """The dotted quad a host in some other integer notation resolves to, or "".
+
+    A name is not the only way to write a destination. `http://3221225995/` and
+    `http://0xc000020b/` and `http://0300.0000.0002.0013/` all reach 192.0.2.11, because
+    the resolver accepts an address written whole, in hex, or a segment at a time in
+    octal. An attacker who has watched one spelling get blocked reaches for another, and
+    the cost of following is one parse."""
+    parts = host.split(".")
+    if len(parts) > 4 or not host:
+        return ""
+    vals = []
+    for part in parts:
+        if _HEX.match(part):
+            vals.append(int(part, 16))
+        elif len(part) > 1 and _OCT.match(part):
+            vals.append(int(part, 8))
+        elif _DEC.match(part):
+            vals.append(int(part))
+        else:
+            return ""                  # a name, not an address
+    # One value is the whole address; n values fill the first n-1 octets and the last
+    # takes the remainder, which is the rule the resolver itself uses.
+    packed = vals[-1]
+    if packed >= 1 << (8 * (5 - len(vals))):
+        return ""
+    for i, v in enumerate(vals[:-1]):
+        if v > 255:
+            return ""
+        packed |= v << (8 * (3 - i))
+    try:
+        return str(ipaddress.IPv4Address(packed))
+    except (ipaddress.AddressValueError, ValueError):
+        return ""
+
+
+def _host_key(authority: str) -> str:
+    """The canonical host of a URL authority: what the connection is actually made to.
+
+    Three things in an authority are not the destination and are varied for free.
+    Anything before an "@" is a credential, not a host, so `good.example@evil.example`
+    is a request to evil.example that reads as a request to good.example. A port is not
+    a host. And a name can be spelled in Unicode or in the punycode it is encoded to
+    before the lookup, which are two spellings of one destination. An IPv6 literal is
+    canonicalised by the same rule that compresses it, so the long form and the short
+    form are one host."""
+    auth = authority.strip()
+    if auth.startswith("["):
+        inner = auth[1:].split("]", 1)[0]
+        try:
+            return "[" + ipaddress.IPv6Address(inner).compressed + "]"
+        except (ipaddress.AddressValueError, ValueError):
+            return ""
+    host = auth.rsplit("@", 1)[-1].split(":")[0].strip(".")
+    if not host:
+        return ""
+    ip = _ipv4_key(host)
+    if ip:
+        return ip
+    if not host.isascii():              # the encoder is slow and almost never needed
+        try:
+            host = host.encode("idna").decode("ascii")
+        except (UnicodeError, UnicodeDecodeError):
+            pass                        # not encodable: compare what was written
+    return host if "." in host else ""
+
+
 def _url_host(s: str) -> str:
-    """The host of a URL-shaped value, or "" if it does not look like one. The path is
-    what an attacker varies for free once the host is fixed: a destination written as
-    "evil.com/x/index.html" reaches the same server as the "evil.com/x" in the injected
+    """The canonical host of a URL-shaped value, or "" if it does not look like one. The
+    path is what an attacker varies for free once the host is fixed: a destination written
+    as "evil.com/x/index.html" reaches the same server as the "evil.com/x" in the injected
     text, so the host is what a destination check has to compare. Measured: without this,
-    appending one path segment took AgentDojo attack success from 3.1% to 6.2%."""
+    appending one path segment took AgentDojo attack success from 3.1% to 6.2%. What
+    counts as the same host is `_host_key`."""
     raw = _norm(s)
     if not _URL_MARK.search(raw):
         return ""                      # a bare host or a filename: the literal check has it
     k = _url_key(raw)
-    host = k.split("/")[0].split("?")[0].split("#")[0].split(":")[0]
-    return host if "." in host and not host.endswith(".") and "@" not in host else ""
+    return _host_key(k.split("/")[0].split("?")[0].split("#")[0])
+
+
+# Something in a text that is shaped like a URL, for pulling hosts back out of it. Wider
+# than _URL_MARK on purpose: this decides what to canonicalise, not what to match.
+_HOSTISH = re.compile(r"https?://[^\s\"'<>()]+|www\.[^\s\"'<>()\[\]]+"
+                      r"|[^\s\"'<>()\[\]/]+\.[a-z]{2,}/[^\s\"'<>()\[\]]*", re.I)
 
 
 class _Text:
@@ -215,7 +314,8 @@ class _Text:
     2 KB document per token made a six-token message cost 1.2 ms; computed once per
     segment per call it is back under 0.05 ms. Decision-identical by construction.
     """
-    __slots__ = ("raw", "_norm", "_tokens", "_alnum", "_urls", "_b64", "_paths", "_addrs")
+    __slots__ = ("raw", "_norm", "_tokens", "_alnum", "_urls", "_b64", "_paths", "_addrs",
+                 "_hosts")
 
     def __init__(self, raw: str):
         self.raw = raw
@@ -226,6 +326,7 @@ class _Text:
         self._b64 = None
         self._paths = None
         self._addrs = None
+        self._hosts = None
 
     @property
     def norm(self) -> str:
@@ -251,9 +352,14 @@ class _Text:
 
     @property
     def addresses(self) -> str:
+        # The defanging pass runs first: an address is still an address when the "@" is
+        # written as "(at)" and the dots as " dot ". Rewriting is safe here because this
+        # view is only ever searched for a value that is itself address shaped, so a
+        # spurious "@" between two ordinary words matches nothing.
         if self._addrs is None:
+            flat = _DEFANG_AT.sub("@", _DEFANG_DOT.sub(".", self.norm))
             self._addrs = " ".join(
-                _address_key(tok) or tok for tok in _WORD_SPLIT.split(self.norm) if tok)
+                _address_key(tok) or tok for tok in _WORD_SPLIT.split(flat) if tok)
         return self._addrs
 
     @property
@@ -262,6 +368,20 @@ class _Text:
             self._paths = " ".join(
                 _path_key(tok) or tok for tok in self.norm.split())
         return self._paths
+
+    @property
+    def hosts(self) -> set:
+        # Every host this text names, canonicalised. The substring checks compare the
+        # value against the text as written, which is enough when only the value was
+        # rewritten. It is not enough when the *text* carries the unusual spelling and
+        # the call carries the plain one: an injection that writes its host in punycode
+        # or an address in its long IPv6 form is naming a destination the plain value
+        # reaches, and only canonicalising both sides sees that.
+        if self._hosts is None:
+            self._hosts = {h for h in (_host_key(_url_key(t).split("/")[0].split("?")[0]
+                                                 .split("#")[0])
+                                       for t in _HOSTISH.findall(self.norm)) if h}
+        return self._hosts
 
     @property
     def urls(self) -> str:
@@ -274,6 +394,21 @@ class _Text:
         if self._b64 is None:
             self._b64 = [_norm(d) for d in _b64_payloads(self.raw)]
         return self._b64
+
+
+@functools.lru_cache(maxsize=256)
+def _prepared(text: str) -> _Text:
+    """The derived views of one text, kept between calls.
+
+    A segment's text does not change, and neither do the views of it, but the gate was
+    rebuilding every view on every authorize: on a 2 KB document that is one pass per
+    token to canonicalise the addresses and another for the paths, repeated for every
+    call in the session. Keyed on the text itself rather than on the segment, because
+    the same document arrives as a different object through the MCP gateway, the session
+    store and the replay harness, and the views are a pure function of the characters.
+    Bounded, so a long-running gateway does not hold every document it has ever seen.
+    """
+    return _Text(text)
 
 
 _STOPWORDS = frozenset("""
@@ -308,21 +443,44 @@ def _record_around(text: str, value: str) -> str:
 
 
 def _vouched(value: str, entry: str) -> bool:
-    """Does this destination match an allowed entry? An entry beginning with "@" or "."
-    covers a whole domain or suffix; anything else is compared whole, after the same
-    canonicalisation the taint check uses, so an allowed address cannot be evaded by a
-    mail tag or a path written with dot segments."""
+    """Does this destination match an allowed entry?
+
+    An entry beginning with "@" or "." covers a whole mail domain or host suffix, one
+    beginning with "/" covers a directory, and anything else is compared whole. Every
+    comparison is made on the canonicalised destination rather than on the string, in
+    both directions: an allowed address cannot be evaded by a mail tag, an allowed
+    directory cannot be escaped by a dot segment, and, the other way round, an entry
+    cannot be *claimed* by a value that merely contains it. Those two failures are the
+    same mistake with opposite signs, and the second is the dangerous one: an allowlist
+    that says more than the deployment meant is a hole the deployment opened itself.
+    A domain written into a query string, and a sibling directory whose name starts with
+    an allowed one, both matched here until this was tested (`eval/canon_probe.py`).
+    """
     v, e = _norm(value), _norm(entry)
     if not v or not e:
         return False
-    if e.startswith(("@", ".", "/")):
-        return v.endswith(e) or _address_key(v).endswith(e) or _path_key(v).startswith(e)
-    return v == e or _address_key(v) == _address_key(e) or (
-        bool(_path_key(v)) and _path_key(v) == _path_key(e))
+    host, addr, path = _url_host(value), _address_key(v), _path_key(v)
+
+    if e.startswith(("@", ".")):        # a mail domain or a host suffix
+        dom = e[1:].strip(".")
+        if not dom:
+            return False
+        if addr and (addr.endswith("@" + dom) or addr.endswith("." + dom)):
+            return True
+        return bool(host) and (host == dom or host.endswith("." + dom))
+
+    if e.startswith("/"):               # a directory
+        base = e.rstrip("/")
+        return bool(path) and (path == base or path.startswith(base + "/"))
+
+    return (v == e
+            or (bool(addr) and addr == _address_key(e))
+            or (bool(path) and path == _path_key(e))
+            or (bool(host) and host == _url_host(e)))
 
 
 def _value_in_untrusted(value: str, text: Union[str, "_Text"]) -> bool:
-    prepared = text if isinstance(text, _Text) else _Text(text)
+    prepared = text if isinstance(text, _Text) else _prepared(str(text))
     v = _norm(value)
     if not v:
         return False
@@ -343,8 +501,8 @@ def _value_in_untrusted(value: str, text: Union[str, "_Text"]) -> bool:
     # its own. This is deliberately one-sided: it can over-gate a legitimate page on a
     # host an untrusted document happens to mention, which is the trade a destination
     # check makes, and the utility cost of it is measured in RESULTS.md.
-    vh = _url_host(v)
-    if len(vh) >= _MIN_SUBSTR_LEN and vh in prepared.urls:
+    vh = _url_host(value)
+    if len(vh) >= _MIN_SUBSTR_LEN and (vh in prepared.urls or vh in prepared.hosts):
         return True
 
     # ... or only because of a segment a filesystem resolves away. Both sides are
@@ -547,7 +705,7 @@ class ToolGate:
             elif isinstance(seg, str):
                 untrusted.append(Segment(text=seg, source="unknown", trust="untrusted"))
         # Derived views of each segment, computed once for every value checked below.
-        prepared = {id(seg): _Text(seg.text) for seg in (*trusted, *untrusted)}
+        prepared = {id(seg): _prepared(seg.text) for seg in (*trusted, *untrusted)}
 
         # 1) Argument taint: a destination value quoted from untrusted content.
         # With no destinations declared, every argument is one, content fields included.
@@ -721,7 +879,7 @@ class ToolGate:
                     untrusted.append(seg)
             elif isinstance(seg, str):
                 untrusted.append(Segment(text=seg, source="unknown", trust="untrusted"))
-        prepared = {id(seg): _Text(seg.text) for seg in (*trusted, *untrusted)}
+        prepared = {id(seg): _prepared(seg.text) for seg in (*trusted, *untrusted)}
         out: Dict[str, List[str]] = {}
         for fname, value in args.items():
             origins: List[str] = []
@@ -833,7 +991,7 @@ class GateSession:
         untrusted = [s for s in self.context if s.trust not in ("trusted", "neutral")]
         if not untrusted:
             return False
-        prepared = {id(seg): _Text(seg.text) for seg in (*trusted, *untrusted)}
+        prepared = {id(seg): _prepared(seg.text) for seg in (*trusted, *untrusted)}
         for value in args.values():
             for scalar in _scalars(value):
                 if any(_value_in_untrusted(scalar, prepared[id(seg)]) for seg in trusted):

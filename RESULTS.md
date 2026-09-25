@@ -759,6 +759,83 @@ thing and the gate did not. The rule that follows is that a destination check ha
 canonicalise the way the tool does, and the only way I have found to discover where it
 does not is to run it against the tool.
 
+### Enumerating the spellings instead of sampling them
+
+Three defects in the matcher had been found by the same method: rewrite the attacker's
+destination, run it against a real tool, see what the disk says. That method works, and
+it is slow. It needs a server, so it only reaches what a server will do, and it samples a
+space rather than covering it. After the third one it was clear the bugs were not
+individually interesting: each was a place where the receiving tool treats two strings as
+one destination and the gate did not, and there is no reason to meet those one at a time.
+
+`eval/canon_probe.py` takes the other approach. No server, no model: state a destination,
+state a second way of writing it, ask the gate whether it still recognises it. That is
+cheap enough to enumerate. Forty-one cases run in about a second, which means they run in
+CI rather than when someone remembers.
+
+Every case carries a claim about the world, and that is the part worth arguing with. Some
+pairs of spellings reach the same place, so a miss is a bypass. Some do not, so a block
+would be the gate guessing. `ev%69l.example` is not `evil.example` to any resolver, and a
+Cyrillic "а" inside a hostname is a different host rather than a synonym for the Latin
+one. Both are in the file as rows the gate is required to allow, because a table that
+counted them as wins would be measuring enthusiasm.
+
+Four defects, all live when the file was written:
+
+| What the untrusted text said | What the call used | Where it goes | Before |
+|---|---|---|---|
+| `http://evil.example/drop` | `http://good.example@evil.example/drop` | evil.example | allowed |
+| `http://192.0.2.11/drop` | `http://3221225995/drop`, hex, or octal | 192.0.2.11 | allowed |
+| `http://[2001:db8:0:0:0:0:0:1]/` | `http://[2001:db8::1]/` | the same host | allowed |
+| `ｅｖｉｌ.example`, or a name in punycode | the ASCII or Unicode form | the same host | allowed |
+
+The first is the one worth staring at. Everything before an `@` in a URL authority is a
+credential, not a destination, so `good.example@evil.example` is a request to the attacker
+that reads as a request to the company. The host check had a guard that rejected any
+authority containing an `@`, on the grounds that it was probably an email address. That
+guard is what the bypass walked through.
+
+The allowlist family is the same question with the sign reversed, and it found two more.
+An entry that matches less than the deployment meant is friction. An entry that matches
+*more* is a hole the deployment opened itself, believing it had allowed one thing. Both of
+these matched:
+
+- `@northwind.example` vouched `http://evil.example/x?u=@northwind.example`, because the
+  value parsed as an address in that domain once a URL was allowed to look like one.
+- `/w/reports` vouched `/w/reports-secret/q1.txt`, because a directory was compared as a
+  string prefix and a sibling directory starts with one.
+
+One more class turned up in a place I was not looking. The unit test for the described
+destination used the text "archive-sync at cloudvendor-support dot example", and that is
+not a described destination at all. It is a written one with the punctuation removed, and
+a model asked to send mail puts it back, mechanically. The gate now does the same
+reconstruction, so that spelling is traced like any other, and the test that guards the
+real hole was rewritten to describe a destination that genuinely appears nowhere. The
+described-destination limit is unchanged and still costs what section *The destination
+that was never written down* says it costs. What changed is that its test was overstating
+it.
+
+The cost of all of this, measured rather than assumed: every one of the 24 AgentDojo
+configurations is identical, pair for pair, to the run before the change. Real-server
+friction is identical in both modes, the cross-gateway benchmark is identical, and both
+adaptive harnesses still report zero bypasses. Wider canonicalisation that changed no
+number anywhere is the expected result and not a disappointing one, because what these
+rows describe is an attacker who has already watched one spelling get blocked, and
+nothing in AgentDojo does that.
+
+It did cost time in the decision path, which is the kind of thing that gets found once it
+is looked for. Canonicalising both sides of a comparison doubled the work per call, and
+profiling it showed the gate had been rebuilding every derived view of a document on every
+authorize: one pass per token for the address forms, another for the paths, repeated for
+every call in the session. Those views are a pure function of the text. Keyed on the text
+and kept between calls, a 1.9 KB document costs this:
+
+| Authorize, one 1.9 KB untrusted document | Median |
+|---|---:|
+| before this change | 0.53 ms |
+| after, without the cache | 0.95 ms |
+| after, with the cache | 0.07 ms |
+
 ### A coverage map, with another gateway on it
 
 A number about one gate says little when nobody else is measured the same way. So the

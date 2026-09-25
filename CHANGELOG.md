@@ -7,6 +7,14 @@ versioning once it reaches 1.0.
 ## [0.7.0] - 2026-09-23
 
 ### Added
+- **`eval/canon_probe.py`: every spelling of one destination, enumerated.** Three defects
+  in the matcher had been found by replaying rewrites against a real server, which needs a
+  server and therefore samples the space rather than covering it. This runs the same
+  question with no server and no model, so all forty-one cases run in a second and in CI.
+  Each case states whether the two spellings reach the same place, and the rows where they
+  do not are rows the gate is required to allow: a percent-encoded host character and a
+  Cyrillic look-alike are different hosts, and blocking them would be guessing.
+
 - **`reasongate-audit`: the session, readable.** `reasongate-mcp --audit FILE` now records
   a line per tool result as well as per decision, and every decision carries the
   provenance of each argument, for allowed calls as much as for blocked ones.
@@ -74,6 +82,36 @@ versioning once it reaches 1.0.
   the task set and every stop confirmed against the side effect rather than the error
   message. `eval/mcpbench_office.py` is the small server for the shapes a filesystem server
   cannot express.
+
+### Fixed
+- **A URL's userinfo is not its destination.** `http://good.example@evil.example/drop` is
+  a request to evil.example that reads as a request to good.example. The host check
+  rejected any authority containing an `@` as probably an email address, and that guard is
+  what the bypass walked through. The host is now taken from after the last `@`, and an
+  address is required to be address shaped rather than merely to contain one.
+- **An address written as a number.** `http://3221225995/`, `http://0xc000020b/` and
+  `http://0300.0000.0002.0013/` all reach 192.0.2.11, and an IPv6 host written with its
+  zeros spelled out is the same host as the compressed form. Both are canonicalised now.
+- **A host written in another width or another alphabet's encoding.** Compatibility
+  normalisation happens before the lookup, and punycode is what a Unicode name becomes, so
+  the fullwidth and encoded spellings are the same destination. Normalising both sides.
+- **Two allowlist entries that matched more than the deployment meant.** `@northwind.example`
+  vouched `http://evil.example/x?u=@northwind.example`, and `/w/reports` vouched the
+  sibling directory `/w/reports-secret`. An allowlist that says more than it was meant to
+  say is a hole the deployment opened itself; entries are now matched against the
+  canonical host, address or directory rather than as string suffixes and prefixes.
+- **An address with the punctuation taken out is still the address.** "archive-sync at
+  cloudvendor-support dot example" is not a described destination, it is a written one a
+  model reassembles mechanically, and the gate now reassembles it too. The test that
+  guards the real described-destination hole was overstating it and was rewritten.
+- **The decision path got faster while getting wider.** The gate rebuilt every derived
+  view of a document on every authorize. They are a pure function of the text, so they are
+  kept between calls: one authorize against a 1.9 KB untrusted document went from 0.53 ms
+  to 0.07 ms, with the wider canonicalisation included.
+
+  Measured: all 24 AgentDojo configurations identical pair for pair, real-server friction
+  identical in both modes, cross-gateway benchmark identical, both adaptive harnesses
+  still at zero bypasses.
 
 ### Changed
 - **Fixed before release: the shared session file could grant trust.** The first version
