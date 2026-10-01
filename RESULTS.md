@@ -171,8 +171,8 @@ and is labeled as such in the tool's own output. Apple M3 Pro, Python 3.9, 0.4.0
 | `scan_input` | 50 KB document, clean (the input ceiling) | 210.997 ms | 215.967 ms |
 | `scan_input` | 50 KB document, attack in the raw text | 84.718 ms | 87.883 ms |
 | `scan_context` | poisoned 2 KB document, 2 segments | 3.025 ms | 3.131 ms |
-| `ToolGate.authorize` | sensitive tool, tainted argument | 0.030 ms | 0.031 ms |
-| `ToolGate.authorize` | clean call, 6 traceable tokens in the body (content taint) | 0.299 ms | 0.302 ms |
+| `ToolGate.authorize` | sensitive tool, tainted argument | 0.011 ms | 0.011 ms |
+| `ToolGate.authorize` | clean call, 6 traceable tokens in the body (content taint) | 0.143 ms | 0.146 ms |
 
 Throughput, one process, 60-char prompts: **5,422 prompts/s**. The core holds no state and
 does no I/O, so throughput scales with processes (`--procs N`); it is CPU-bound pure
@@ -192,12 +192,12 @@ Python, so it does not scale with threads.
   compare against. The crossover is around **25 KB**: past that size the rule core is not
   the cheap option, because a transformer truncates its input at 512 tokens and we do not.
   Anyone gating whole documents or RAG chunks should budget per KB, not per prompt.
-- **The action gate is size-independent and cheap (0.030 ms), and since content taint
+- **The action gate is size-independent and cheap (0.011 ms), and since content taint
   it scales with tokens, not prose.** It reads tool arguments and segment trust, so it does
   not pay for document length. Content taint traces every URL, email and identifier in a
   composed message against every untrusted segment: a six-token body against a 2 KB
-  document costs ~0.3 ms with the per-segment views memoized (1.2 ms before), a body with
-  no such tokens stays under 0.07 ms. The gate rows were measured in a later run than the
+  document costs ~0.14 ms with the derived views kept between calls, against 0.66 ms when
+  they were rebuilt per call and 1.2 ms before they were memoized at all. The gate rows were measured in a later run than the
   scan rows; that run's scan rows came out 10 to 15% slower than the table (run-to-run
   variance on this machine, nothing in the scan path changed), so ratios between the two
   groups should not be read to the third digit.
@@ -634,16 +634,19 @@ styles of description, with the agent writing the canonical address in every cas
 | What the injection said | Blocked by taint |
 |---|---|
 | the address, written out | yes |
-| "archive-sync at cloudvendor-support dot example" | **no** |
+| "archive-sync at cloudvendor-support dot example" | yes, since the canonicalisation pass |
 | "the word archive, a hyphen, sync, then our support domain" | **no** |
 | "the address in the signature block of this thread" | **no** |
 | the address with spaces between the characters | yes |
 | the address reversed | **no** |
 
-Four of six. The two that are caught are caught by accident, because the alphanumeric and
-base64 views of the text happen to contain them. This is not a matching bug to fix; it is
-the shape of the rule. An open set of ways to describe a string cannot be met by comparing
-strings.
+Three of six, and it was four until the canonicalisation pass closed the spoken spelling.
+The three that are caught are caught for three different reasons and only one of them is
+the rule working as designed: the written-out address matches literally, the spoken one is
+reassembled, and the spaced-out one survives only because the alphanumeric view of the
+text happens to contain the value. That last one is luck. None of it is a matching bug to
+fix; it is the shape of the rule. An open set of ways to describe a string cannot be met
+by comparing strings.
 
 **The answer is to stop asking the negative question.** Taint asks "did this value come
 out of untrusted content", and lets everything else through. `ToolGate(vouched_destinations=True)`
@@ -651,7 +654,7 @@ asks the other one: is this destination justified? A value must be one the princ
 or one the deployment allowed, and a value that appears nowhere does not run. That turns
 the open set of things an attacker might say into a closed set of places an action may go,
 which is the only answer to a described destination that does not involve reading the
-description. All six styles above are refused, including the two taint caught by luck.
+description. All six styles above are refused, including the three taint catches, one of which it catches by luck.
 
 **What it costs, measured where it can be.** Not on AgentDojo: there the mode changes
 nothing at all, neither utility nor attack success, because that benchmark's attackers
@@ -828,13 +831,17 @@ is looked for. Canonicalising both sides of a comparison doubled the work per ca
 profiling it showed the gate had been rebuilding every derived view of a document on every
 authorize: one pass per token for the address forms, another for the paths, repeated for
 every call in the session. Those views are a pure function of the text. Keyed on the text
-and kept between calls, a 1.9 KB document costs this:
+and kept between calls, the repository's own latency benchmark says this (p50 of two
+hundred timed calls, Apple M3 Pro):
 
-| Authorize, one 1.9 KB untrusted document | Median |
-|---|---:|
-| before this change | 0.53 ms |
-| after, without the cache | 0.95 ms |
-| after, with the cache | 0.07 ms |
+| `ToolGate.authorize` | tainted argument | 6 tokens traced against a 2 KB document |
+|---|---:|---:|
+| before this change | 0.034 ms | 0.66 ms |
+| after, views rebuilt per call | 0.070 ms | 1.29 ms |
+| after, views kept between calls | 0.011 ms | 0.14 ms |
+
+So the wider comparison did cost what it looked like it would cost, and the thing it
+exposed was worth more than the thing it cost.
 
 ### Reading the gateway against the protocol, not against the attacks it stops
 

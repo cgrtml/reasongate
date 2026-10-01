@@ -134,8 +134,9 @@ versioning once it reaches 1.0.
   guards the real described-destination hole was overstating it and was rewritten.
 - **The decision path got faster while getting wider.** The gate rebuilt every derived
   view of a document on every authorize. They are a pure function of the text, so they are
-  kept between calls: one authorize against a 1.9 KB untrusted document went from 0.53 ms
-  to 0.07 ms, with the wider canonicalisation included.
+  kept between calls. On the repository's own latency benchmark the heaviest case, six
+  traceable tokens in a message body against a 2 KB untrusted document, went from 0.66 ms
+  to 0.14 ms, and the simple case from 0.034 ms to 0.011 ms, canonicalisation included.
 
   Measured: all 24 AgentDojo configurations identical pair for pair, real-server friction
   identical in both modes, cross-gateway benchmark identical, both adaptive harnesses
