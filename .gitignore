@@ -12,3 +12,6 @@ _archive/
 dist/
 build/
 examples/stakes_demo/_sideeffects/
+
+# InjecAgent's own test data, fetched on demand by eval/injecagent_shape.py
+eval/data/injecagent/
