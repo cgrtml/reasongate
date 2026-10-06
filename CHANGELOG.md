@@ -4,6 +4,20 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); this project aims for semantic
 versioning once it reaches 1.0.
 
+## [Unreleased]
+
+### Fixed
+- **The server's `instructions` field was not untrusted content.** The initialize result
+  carries prose the server writes for the model, and the protocol says a client may put it
+  in the system prompt. It arrives once, before `tools/list` and outside any tool, so a
+  gate that recorded tool descriptions and tool results as untrusted and nothing else let
+  it pass. A registry scan posted to the protocol's issue on the field found that two in
+  three live servers populate it, some to tens of thousands of characters, and that some
+  of the text tells the model what not to say to the user. The gateway records the field
+  the way it records descriptions: an address that appears only there taints the call
+  that uses it. The text is not trimmed or judged, because the gate decides at the action.
+  Regression test with a server whose instructions dictate a copy address.
+
 ## [0.7.0] - 2026-09-23
 
 ### Added

@@ -75,6 +75,8 @@ class Gateway:
         self.tool_schemas: Dict[str, dict] = {}         # every tool seen, by name
         self.listed: set = set()                        # names the server actually advertised
         self._described: set = set()                    # description lines already recorded
+        self.init_ids: set = set()                      # initialize requests awaiting a reply
+        self._instructed: set = set()                   # server instruction texts already recorded
         self.allowed_destinations = list(allowed_destinations or [])
         self.session = GateSession(ToolGate([]), context=[
             Segment(text=t, source="operator", trust="trusted") for t in (trusted_context or [])])
@@ -188,6 +190,23 @@ class Gateway:
                    "outcome": outcome, "provenance": provenance, "decision": decision.to_dict()}
             self._append_audit(rec)
 
+    def _install_instructions(self, text: Any) -> None:
+        """The `instructions` field of the initialize result, recorded as untrusted content.
+
+        The field is prose the server writes for the model, and the protocol says a client
+        may put it in the system prompt. It arrives once, before `tools/list`, outside any
+        tool, so a gate that watches tool descriptions and tool results and nothing else
+        never sees it: the gate recorded descriptions as untrusted and let this field pass,
+        which is the same omission a maintainer of another gateway reported in the protocol
+        issue about the field. The rule is the one the descriptions get. An address that
+        appears only in the server's instructions taints a call that uses it; the text
+        itself is neither trimmed nor judged, because the gate decides at the action."""
+        if not isinstance(text, str) or not text.strip() or text in self._instructed:
+            return
+        self._instructed.add(text)
+        self.session.add_context(Segment(text=text, source="server instructions",
+                                         trust="untrusted"))
+
     # -- the shared session ------------------------------------------------------------
 
     def _push_shared(self, seg) -> None:
@@ -297,6 +316,8 @@ class Gateway:
         to the client INSTEAD of forwarding, or None to forward."""
         method = msg.get("method")
         if method == "initialize":
+            if "id" in msg:
+                self.init_ids.add(msg["id"])
             caps = ((msg.get("params") or {}).get("capabilities")) or {}
             self.client_elicits = isinstance(caps, dict) and "elicitation" in caps
             if self.mode == "ask" and not self.client_elicits:
@@ -422,6 +443,12 @@ class Gateway:
                 self._install_tools(tools)
             if not self.list_ids:
                 self._tools_ready.set()
+            return
+        if mid in self.init_ids:
+            self.init_ids.discard(mid)
+            result = msg.get("result")
+            if isinstance(result, dict):
+                self._install_instructions(result.get("instructions"))
             return
         call = self.pending.pop(mid, None)
         if call is None:
