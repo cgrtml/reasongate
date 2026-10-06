@@ -57,6 +57,59 @@ def _text_of(result: Any) -> str:
     return "\n".join(p for p in parts if p)
 
 
+# Requests whose reply is prose the model reads and the server wrote. The two reads return
+# content the agent takes in like a file; the three lists return names and descriptions,
+# which the agent has before it has read anything, like tool descriptions.
+_SERVER_READS = ("resources/read", "prompts/get")
+_SERVER_LISTS = ("resources/list", "resources/templates/list", "prompts/list")
+
+
+def _prose_of(method: str, result: Any) -> str:
+    """What a model would read from a resources/* or prompts/* reply."""
+    if not isinstance(result, dict):
+        return json.dumps(result, ensure_ascii=False) if result is not None else ""
+    parts: List[str] = []
+    if method == "resources/read":
+        for c in result.get("contents") or []:
+            if not isinstance(c, dict):
+                continue
+            if c.get("text") is not None:
+                parts.append(str(c["text"]))
+            elif c.get("blob") is not None:
+                parts.append(f"blob {c.get('uri', '')} {c.get('mimeType', '')}")
+    elif method == "prompts/get":
+        if result.get("description"):
+            parts.append(str(result["description"]))
+        for m in result.get("messages") or []:
+            if not isinstance(m, dict):
+                continue
+            blocks = m.get("content")
+            for block in (blocks if isinstance(blocks, list) else [blocks]):
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") == "text":
+                    parts.append(str(block.get("text", "")))
+                elif block.get("type") == "resource":
+                    res = block.get("resource") or {}
+                    parts.append(str(res.get("text", "")) or str(res.get("uri", "")))
+                elif block.get("type") == "resource_link":
+                    parts.append(f"{block.get('name', '')} {block.get('uri', '')}")
+    else:
+        key = {"resources/list": "resources", "resources/templates/list": "resourceTemplates",
+               "prompts/list": "prompts"}[method]
+        for item in result.get(key) or []:
+            if not isinstance(item, dict):
+                continue
+            line = " ".join(str(item.get(k, "")) for k in ("name", "title", "uri", "uriTemplate") if item.get(k))
+            if item.get("description"):
+                line += f": {item['description']}"
+            for arg in item.get("arguments") or []:
+                if isinstance(arg, dict) and arg.get("description"):
+                    line += f"\n  {arg.get('name', '')}: {arg['description']}"
+            parts.append(line)
+    return "\n".join(p for p in parts if p)
+
+
 def _block_reply(request_id: Any, decision: GateDecision) -> dict:
     return {"jsonrpc": "2.0", "id": request_id,
             "result": {"content": [{"type": "text", "text": _BLOCK_TEXT.format(reason=decision.explain())}],
@@ -77,6 +130,7 @@ class Gateway:
         self._described: set = set()                    # description lines already recorded
         self.init_ids: set = set()                      # initialize requests awaiting a reply
         self._instructed: set = set()                   # server instruction texts already recorded
+        self.reads: Dict[Any, dict] = {}                 # resources/* and prompts/* requests awaiting a reply
         self.allowed_destinations = list(allowed_destinations or [])
         self.session = GateSession(ToolGate([]), context=[
             Segment(text=t, source="operator", trust="trusted") for t in (trusted_context or [])])
@@ -207,6 +261,43 @@ class Gateway:
         self.session.add_context(Segment(text=text, source="server instructions",
                                          trust="untrusted"))
 
+    def _install_read(self, read: dict, msg: dict) -> None:
+        """A resources/* or prompts/* reply, recorded as untrusted content.
+
+        The gate watched tool results and nothing else the server returned, so a document
+        the agent fetched through `resources/read` instead of through a read tool was never
+        in scope, and a prompt the server served through `prompts/get` was not either. Both
+        are the server's text in the model's context, which is the thing the gate exists
+        to track. A read is recorded like a tool result, with its own audit line and a push
+        to the shared session; a list is recorded like the tool descriptions, once per
+        text, because a name or description is prose the agent has before it reads."""
+        method, params = read["method"], read["params"]
+        if "result" in msg:
+            text = _prose_of(method, msg["result"])
+        elif isinstance(msg.get("error"), dict):
+            err = msg["error"]
+            text = "\n".join(str(x) for x in (err.get("message"),
+                                               json.dumps(err.get("data"), ensure_ascii=False)
+                                               if err.get("data") is not None else "") if x)
+        else:
+            return
+        if not text.strip():
+            return
+        if method in _SERVER_LISTS:
+            if text in self._described:
+                return
+            self._described.add(text)
+            source = "resource descriptions" if method.startswith("resources") else "prompt descriptions"
+            self.session.add_context(Segment(text=text, source=source, trust="untrusted"))
+            return
+        which = params.get("uri") if method == "resources/read" else params.get("name")
+        name = f"{method} {which}" if which else method
+        seg = Segment(text=text, source=name, trust="untrusted")
+        self.session.add_context(seg)
+        self._push_shared(seg)
+        if self.audit_path:
+            self._record_result({"name": name}, seg, text)
+
     # -- the shared session ------------------------------------------------------------
 
     def _push_shared(self, seg) -> None:
@@ -329,6 +420,9 @@ class Gateway:
             self.list_ids.add(msg["id"])
             self._tools_ready.clear()
             return None
+        if method in _SERVER_READS + _SERVER_LISTS and "id" in msg:
+            self.reads[msg["id"]] = {"method": method, "params": msg.get("params") or {}}
+            return None
         if method == "tools/call" and "id" in msg:
             params = msg.get("params") or {}
             call = {"name": str(params.get("name", "")), "args": dict(params.get("arguments") or {})}
@@ -449,6 +543,10 @@ class Gateway:
             result = msg.get("result")
             if isinstance(result, dict):
                 self._install_instructions(result.get("instructions"))
+            return
+        read = self.reads.pop(mid, None)
+        if read is not None:
+            self._install_read(read, msg)
             return
         call = self.pending.pop(mid, None)
         if call is None:

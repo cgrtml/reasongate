@@ -1010,12 +1010,15 @@ measurements can see. Strict mode is the exception: it counts any untrusted cont
 scope, and the descriptions are always in scope, so its cost went from 7 of 12 to 5 of 12.
 That is the mode's own arithmetic rather than a surprise.
 
-The same omission had a second instance that the benchmark did not cover. The initialize
-result carries an `instructions` field, prose the server writes for the model that a client
-may put in the system prompt, and the gateway let it pass while recording descriptions. It
-is recorded as untrusted now, under the same rule, with a regression test and no benchmark
-row: a row would be the description row with the text moved one message earlier, and the
-mechanism it exercises is the one already measured.
+The same omission had more instances than the benchmark covered. The initialize result
+carries an `instructions` field, prose the server writes for the model that a client may
+put in the system prompt; `resources/read` and `prompts/get` return text the agent takes
+in like a file; the resource and prompt lists carry descriptions the agent has before it
+reads. The gateway let all of it pass while recording tool descriptions and tool results.
+Each is recorded as untrusted now, under the same rule, with a regression test and no
+benchmark row: a row would be the description row with the text moved to another message,
+and the mechanism it exercises is the one already measured. Neither AgentDojo nor the
+friction servers go through these methods, so the figures above did not move.
 
 **Read the rug-pull column narrowly.** This gate stops that scenario, and not because it
 noticed the server change: the swapped description names an address, the address taints

@@ -17,6 +17,18 @@ versioning once it reaches 1.0.
   the way it records descriptions: an address that appears only there taints the call
   that uses it. The text is not trimmed or judged, because the gate decides at the action.
   Regression test with a server whose instructions dictate a copy address.
+- **`resources/read`, `prompts/get` and the three lists were not untrusted content either.**
+  The gateway watched tool results and nothing else the server returned. A document the
+  agent fetched through `resources/read` instead of through a read tool was never in
+  scope, a prompt served through `prompts/get` was not, and the names and descriptions
+  from `resources/list`, `resources/templates/list` and `prompts/list` were not. All of
+  it is the server's text in the model's context. A read is now recorded like a tool
+  result, with its own audit line and a push to the shared session; a list is recorded
+  like the tool descriptions, once per text. Three regression tests, one per path. No
+  measurement moved: neither AgentDojo nor the friction servers go through these
+  methods, so the cost on them is zero by construction rather than by measurement, and
+  strict mode, which counts any untrusted content in scope, now counts these lists the
+  way it already counted tool descriptions.
 
 ## [0.7.0] - 2026-09-23
 
