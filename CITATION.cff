@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-message: "If you use this software, please cite it as below."
+message: "If you use this software, cite the paper below; the software entry is for the code itself."
 type: software
 title: "ReasonGate: an explainable security gate for LLM applications"
 authors:
@@ -20,3 +20,15 @@ keywords:
   - guardrails
   - explainable ai
   - audit trail
+preferred-citation:
+  type: article
+  title: "Gating Tool Calls by Where Their Arguments Came From: A Prompt-Injection Defence Measured Without a Model"
+  authors:
+    - family-names: Temel
+      given-names: Cagri
+      orcid: "https://orcid.org/0009-0003-3359-6939"
+  year: 2026
+  month: 10
+  doi: "10.5281/zenodo.23178080"
+  url: "https://doi.org/10.5281/zenodo.23178080"
+  notes: "Preprint, Zenodo"

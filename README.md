@@ -525,6 +525,23 @@ the enterprise add-on.
 - The cloud ML path calls an embedding API per request. Budget for cost and latency, or run
   core-only.
 
+## Citing
+
+The paper behind the action gate and its measurements is a preprint on Zenodo,
+DOI [10.5281/zenodo.23178080](https://doi.org/10.5281/zenodo.23178080). `CITATION.cff`
+carries the BibTeX fields, and GitHub's "Cite this repository" button reads it.
+
+```bibtex
+@misc{temel2026gating,
+  author = {Temel, Cagri},
+  title  = {Gating Tool Calls by Where Their Arguments Came From: A Prompt-Injection Defence Measured Without a Model},
+  year   = {2026},
+  doi    = {10.5281/zenodo.23178080},
+  url    = {https://doi.org/10.5281/zenodo.23178080},
+  note   = {Preprint, Zenodo}
+}
+```
+
 ## License
 
 Apache-2.0; see [LICENSE](LICENSE). The enterprise add-on is separately licensed.
